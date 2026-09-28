@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
+  <defs>
+    <linearGradient id="atlas-bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stopColor="#17594C" />
+      <stop offset="50%" stopColor="#134C41" />
+      <stop offset="100%" stopColor="#0A2D26" />
+    </linearGradient>
+    <linearGradient id="atlas-gold-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stopColor="#F6E7B8" />
+      <stop offset="50%" stopColor="#D5B064" />
+      <stop offset="100%" stopColor="#B38936" />
+    </linearGradient>
+    <linearGradient id="atlas-emerald-grad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stopColor="#2DD4BF" />
+      <stop offset="100%" stopColor="#10B981" />
+    </linearGradient>
+  </defs>
+  <rect x="1" y="1" width="46" height="46" rx="12" fill="url(#atlas-bg-grad)" stroke="#D5B064" stroke-width="1.2" stroke-opacity="0.4" />
+  <ellipse cx="24" cy="24" rx="17" ry="7.5" transform="rotate(-28 24 24)" stroke="url(#atlas-gold-grad)" stroke-width="1.6" stroke-dasharray="40 4" stroke-opacity="0.85" />
+  <ellipse cx="24" cy="24" rx="17" ry="7.5" transform="rotate(32 24 24)" stroke="url(#atlas-emerald-grad)" stroke-width="1.3" stroke-opacity="0.45" />
+  <path d="M24 9L34 32H28.5L24 20.5L19.5 32H14L24 9Z" fill="url(#atlas-gold-grad)" />
+  <polygon points="24,20 28,29 20,29" fill="#0A2D26" opacity="0.9" />
+  <circle cx="24" cy="11.5" r="1.8" fill="#FFFBEB" />
+</svg>

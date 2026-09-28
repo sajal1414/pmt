@@ -1,0 +1,39 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    container_name: atlas_backend
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-atlas-prod-secret-key-2026}
+      - JWT_EXPIRY_HOURS=${JWT_EXPIRY_HOURS:-24}
+      - S3_BUCKET=${S3_BUCKET:-nfolks-atlas-prod}
+      - AWS_REGION=${AWS_REGION:-us-east-2}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - S3_ENDPOINT_URL=${S3_ENDPOINT_URL:-}
+      - CORS_ORIGINS=${CORS_ORIGINS:-*}
+      - PORT=${PORT:-8000}
+    ports:
+      - "8000:8000"
+    networks:
+      - atlas_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: always
+    container_name: atlas_frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - atlas_network
+
+networks:
+  atlas_network:
+    driver: bridge

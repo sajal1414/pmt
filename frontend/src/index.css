@@ -1,0 +1,264 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  /* ── Typography (same families as dd-ui) ── */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Manrope", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-heading: "Manrope", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+/* ── nFolks ATLAS palette ──
+   Brand colors as given: deep green #134C41, cream #F8F7F3, gold #D5B064, sage #EDF1EB.
+   Everything else here is a derived tint/shade of those four (hover states, borders,
+   sunk surfaces) — same token *names* as dd-ui so every component below (copied
+   from dd-ui) picks up this palette automatically without any component edits. */
+:root {
+  --background: #edf1eb;          /* sage — app canvas */
+  --foreground: #14201b;          /* near-black, green-tinted — body text */
+  --card: #f8f7f3;                /* cream — card surface, lifted above the sage canvas */
+  --card-foreground: #14201b;
+  --popover: #f8f7f3;
+  --popover-foreground: #14201b;
+  --primary: #134c41;             /* deep green */
+  --primary-foreground: #ffffff;
+  --secondary: #e1e8dd;           /* sunk fields inside cards */
+  --secondary-foreground: #14201b;
+  --muted: #e1e8dd;
+  --muted-foreground: #5c6a61;
+  --accent: #f6ead0;              /* light gold wash — hover/active rows */
+  --accent-foreground: #134c41;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #d7ded2;
+  --input: #d7ded2;
+  --ring: #134c41;
+
+  --border-subtle: #e6ece2;
+  --border-strong: #c3cdbc;
+  --surface: #f8f7f3;
+  --surface-2: #e1e8dd;
+  --surface-3: #d5ded0;
+  --surface-elevated: #f8f7f3;
+  --surface-sunk: #e1e8dd;
+
+  --fg-1: #14201b;
+  --fg-2: #45524b;
+  --fg-3: #6b776f;
+  --fg-muted: #98a196;
+  --fg-on-brand: #ffffff;
+
+  --gold: #d5b064;
+  --gold-soft: #f6ead0;
+  --gold-strong: #b98f45;
+
+  --success-500: #16a34a;
+  --success-100: #dcfce7;
+  --success-fg: #166534;
+  --warning-500: #f59e0b;
+  --warning-100: #fef3c7;
+  --warning-fg: #92400e;
+  --info-500: #3b82f6;
+  --info-100: #dbeafe;
+  --info-fg: #1e40af;
+  --danger-500: #dc2626;
+  --danger-100: #fee2e2;
+  --danger-fg: #991b1b;
+
+  --chart-1: #134c41;
+  --chart-2: #d5b064;
+  --chart-3: #7fa98f;
+  --chart-4: #b98f45;
+  --chart-5: #4c7a6e;
+  --chart-grid: color-mix(in oklab, var(--fg-3) 18%, transparent);
+
+  --shadow-brand: 0 6px 16px -8px rgba(19, 76, 65, 0.45);
+
+  --radius: 0.625rem;
+
+  --sidebar: #f8f7f3;
+  --sidebar-foreground: #14201b;
+  --sidebar-primary: #134c41;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f6ead0;
+  --sidebar-accent-foreground: #134c41;
+  --sidebar-border: #e6ece2;
+  --sidebar-ring: #134c41;
+}
+
+/* ── Themed scrollbars ── */
+@layer base {
+  @supports (-moz-appearance: none) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-strong) transparent;
+    }
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: 6px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--fg-muted);
+    background-clip: padding-box;
+    border: 2px solid transparent;
+  }
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .dd-field:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 1px;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html,
+  body,
+  #root {
+    @apply antialiased bg-background text-foreground;
+    font-family: var(--font-sans);
+    margin: 0;
+    padding: 0;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "cv11", "ss01", "ss03", "tnum";
+  }
+
+  html {
+    @apply font-sans;
+  }
+
+  button:not(:disabled):not([aria-disabled="true"]),
+  [role="button"],
+  [role="tab"],
+  [role="switch"],
+  [role="menuitem"],
+  [role="option"],
+  a[href] {
+    cursor: pointer;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font-family: inherit;
+    font-feature-settings: inherit;
+  }
+
+  code,
+  pre,
+  .font-mono {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@theme inline {
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-surface-sunk: var(--surface-sunk);
+  --color-border-subtle: var(--border-subtle);
+  --color-border-strong: var(--border-strong);
+  --color-fg-1: var(--fg-1);
+  --color-fg-2: var(--fg-2);
+  --color-fg-3: var(--fg-3);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-on-brand: var(--fg-on-brand);
+  --color-gold: var(--gold);
+  --color-gold-soft: var(--gold-soft);
+  --color-gold-strong: var(--gold-strong);
+  --color-danger-500: var(--danger-500);
+  --color-danger-100: var(--danger-100);
+  --color-danger-fg: var(--danger-fg);
+  --color-warning-500: var(--warning-500);
+  --color-warning-100: var(--warning-100);
+  --color-warning-fg: var(--warning-fg);
+  --color-success-500: var(--success-500);
+  --color-success-100: var(--success-100);
+  --color-success-fg: var(--success-fg);
+  --color-info-500: var(--info-500);
+  --color-info-100: var(--info-100);
+  --color-info-fg: var(--info-fg);
+  --font-display: var(--font-display);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}

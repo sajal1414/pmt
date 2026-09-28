@@ -3,11 +3,12 @@ from datetime import date
 from decimal import Decimal
 
 import openpyxl
-from flask import Blueprint, g, request
+from flask import Blueprint, Response, g, request
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from app.auth.auth_utils import require_role, verify_jwt_token
 from app.config import FAIL_MESSAGE, SUCCESS_MESSAGE, respond
+from app.courses.course_pdf import generate_course_outline_pdf
 from app.courses.courses_dao import CourseDAO
 from app.courses.courses_import import map_lesson_row, map_row
 from app.db import to_dict
@@ -195,6 +196,26 @@ def get_outline_url(course_id):
         return respond(SUCCESS_MESSAGE, "OK", {"playback_url": url})
 
 
+@courses_api.route("/<int:course_id>/outline/pdf", methods=["GET"])
+@verify_jwt_token()
+def download_course_outline_pdf(course_id):
+    with CourseDAO() as dao:
+        course = dao.get_by_id(course_id, g.current_user)
+        if course is None:
+            return respond(FAIL_MESSAGE, "Course not found"), 404
+        pdf_bytes = generate_course_outline_pdf(course)
+        code = course.nfolks_course_code or f"COURSE-{course.id}"
+        safe_code = "".join(c for c in code if c.isalnum() or c in ("-", "_"))
+        return Response(
+            pdf_bytes,
+            mimetype="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{safe_code}_Course_Outline.pdf"',
+                "Content-Type": "application/pdf",
+            },
+        )
+
+
 @courses_api.route("/import", methods=["POST"])
 @verify_jwt_token()
 @require_role("admin")
@@ -203,12 +224,13 @@ def import_courses():
     if file is None:
         return respond(FAIL_MESSAGE, "No file uploaded (expected multipart field 'file')"), 400
 
-    workbook = openpyxl.load_workbook(file, data_only=True)
+    workbook = openpyxl.load_workbook(file, read_only=True, data_only=True)
 
     # 1. Identify Courses sheet
     courses_sheet_name = None
     for name in workbook.sheetnames:
-        if name.strip().lower() in ("courses", "course"):
+        clean = name.strip().lower()
+        if "course directory" in clean or "course catalog" in clean or clean in ("courses", "course"):
             courses_sheet_name = name
             break
     if not courses_sheet_name:
@@ -221,7 +243,7 @@ def import_courses():
     except StopIteration:
         return respond(FAIL_MESSAGE, "Courses sheet is empty"), 400
 
-    created, skipped, errors = 0, 0, []
+    created, updated, skipped, errors = 0, 0, 0, []
     lessons_created, lesson_errors = 0, []
 
     with CourseDAO() as dao:
@@ -245,12 +267,23 @@ def import_courses():
             row = dict(zip(headers, raw_row))
             fields = map_row(row)
             code = fields.get("nfolks_course_code")
+            if not code and fields.get("course_name"):
+                code = f"ATLAS-BK-{row_number:03d}"
+                fields["nfolks_course_code"] = code
 
             target_course_id = None
             if code:
                 code_str = str(code).strip()
                 if code_str in course_code_to_id:
                     target_course_id = course_code_to_id[code_str]
+                    existing_course = dao.get_raw_by_id(target_course_id)
+                    if existing_course:
+                        try:
+                            body = CourseUpdateRequest(**fields)
+                            dao.update(existing_course, body.model_dump(exclude_unset=True))
+                            updated += 1
+                        except Exception:
+                            pass
                 else:
                     try:
                         body = CourseCreateRequest(**fields)
@@ -373,13 +406,14 @@ def import_courses():
                     dao.session.add(lesson)
                     lessons_created += 1
 
-                dao.session.commit()
+        dao.session.commit()
 
     return respond(
         SUCCESS_MESSAGE,
         "Import complete",
         {
             "created": created,
+            "updated": updated,
             "lessons_created": lessons_created,
             "skipped": skipped,
             "errors": errors + lesson_errors,

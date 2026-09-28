@@ -8,6 +8,7 @@ import { useQueryClient } from "@tanstack/react-query";
 
 interface ImportResult {
   created: number;
+  updated?: number;
   lessons_created?: number;
   skipped: number;
   errors: { row: number; reason: string }[];
@@ -37,9 +38,11 @@ export function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpen
 
       if (data.errors.length === 0) {
         // Clean complete success: notify and automatically close dialog
-        const msg = data.lessons_created
-          ? `Successfully imported ${data.created} courses and ${data.lessons_created} lessons!`
-          : `Successfully imported all ${data.created} courses!`;
+        const parts: string[] = [];
+        if (data.created > 0) parts.push(`${data.created} courses created`);
+        if (data.updated && data.updated > 0) parts.push(`${data.updated} courses updated`);
+        if (data.lessons_created && data.lessons_created > 0) parts.push(`${data.lessons_created} lessons added`);
+        const msg = parts.length > 0 ? `Successfully imported: ${parts.join(", ")}!` : "Spreadsheet imported successfully!";
         toast.success(msg);
         setResult(null);
         setFile(null);
@@ -47,9 +50,10 @@ export function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpen
       } else {
         // Has partial errors or skips: surface the report and let user inspect
         setResult(data);
-        if (data.created > 0) {
+        if (data.created > 0 || (data.updated && data.updated > 0)) {
           const lMsg = data.lessons_created ? ` and ${data.lessons_created} lessons` : "";
-          toast.success(`Imported ${data.created} courses${lMsg} (${data.skipped} skipped)`);
+          const count = (data.created || 0) + (data.updated || 0);
+          toast.success(`Processed ${count} courses${lMsg} (${data.skipped} skipped)`);
         } else {
           toast.error(`Import failed with ${data.errors.length} validation errors`);
         }

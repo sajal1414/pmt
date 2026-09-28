@@ -4,20 +4,22 @@ import { toast } from "sonner";
 import {
   Plus,
   Trash2,
-  ArrowLeft,
   Paperclip,
   Eye,
   FileText,
   BookOpen,
-  AlignLeft,
-  Video,
-  PenLine,
   Save,
+  Download,
+  Layers,
+  Calendar,
+  DollarSign,
+  Award,
 } from "lucide-react";
 import { SurfaceHeader } from "@/components/shared/surface-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { TabStrip, type TabDef } from "@/components/shared/tab-strip";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
@@ -25,16 +27,35 @@ import { ContentViewerDialog } from "@/components/shared/content-viewer-dialog";
 import { StatusBadge, courseStatusTone, formatEnumLabel } from "@/components/shared/status-badge";
 import { useCourse, useLessons } from "@/hooks/use-courses";
 import { useCreateLesson, useDeleteCourse, useDeleteLesson, useUpdateCourse } from "@/hooks/use-course-mutations";
-import { apiGet, getErrorMessage } from "@/lib/api";
-import { cn, nullifyEmptyStrings } from "@/lib/utils";
+import { api, apiGet, getErrorMessage } from "@/lib/api";
+import { nullifyEmptyStrings } from "@/lib/utils";
 import type { Lesson } from "@/lib/types";
 import { LessonAttachmentDialog } from "./lesson-attachment-dialog";
 import { CoursePreview } from "./course-preview";
 
-const STATUS_OPTIONS = ["backlog", "pipeline", "draft", "in_progress", "for_review", "updated_version", "custom", "published"];
+const STATUS_OPTIONS = [
+  "backlog",
+  "pipeline",
+  "draft",
+  "in_progress",
+  "for_review",
+  "updated_version",
+  "custom",
+  "published",
+];
+
+const OUTLINE_STATUS_OPTIONS = [
+  "missing",
+  "not_yet_scoped",
+  "draft",
+  "partially_complete",
+  "validated",
+];
+
 const LAB_LOCATION_OPTIONS = ["ITZ", "nFolks", "instructor_owned", "na"];
+const IP_OWNER_OPTIONS = ["nFolks", "SubK"];
 const SKILL_LEVEL_OPTIONS = ["foundational", "intermediate", "advanced"];
-const FIELD_CLASS = "text-xs font-medium text-fg-2";
+const FIELD_CLASS = "text-xs font-semibold text-fg-2 uppercase tracking-wider";
 
 type DetailTab = "details" | "lessons" | "preview";
 
@@ -60,6 +81,7 @@ export default function CourseDetailPage() {
   const [form, setForm] = useState<Record<string, string>>({});
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [newLessonTitle, setNewLessonTitle] = useState("");
+  const [newLessonDuration, setNewLessonDuration] = useState("");
   const [attachmentLesson, setAttachmentLesson] = useState<Lesson | null>(null);
   const [viewer, setViewer] = useState<ViewerState | null>(null);
 
@@ -88,20 +110,51 @@ export default function CourseDetailPage() {
   useEffect(() => {
     if (course) {
       setForm({
-        course_name: course.course_name,
-        status: course.status,
+        // Core Identification (Cols 1-8)
         vendor: course.vendor ?? "",
         platform: course.platform ?? "",
         portfolio: course.portfolio ?? "",
         product: course.product ?? "",
+        nfolks_course_code: course.nfolks_course_code ?? "",
+        ibm_course_codes: course.ibm_course_codes ?? "",
+        status: course.status ?? "backlog",
+        course_name: course.course_name ?? "",
+
+        // Modality, Duration & Course Outline (Cols 9-13, 22)
+        course_outline_status: course.course_outline_status ?? "",
         modality: course.modality ?? "",
-        duration_days: course.duration_days ?? "",
-        num_hours: course.num_hours ?? "",
-        skill_level: course.skill_level ?? "",
+        duration_days: course.duration_days ? String(course.duration_days) : "",
+        num_hours: course.num_hours ? String(course.num_hours) : "",
+        on_ibm_pmt: course.on_ibm_pmt ?? "",
+        link_to_course_outline: course.link_to_course_outline ?? "",
+
+        // Operations, Schedule & Ownership (Cols 14-20)
         lab_location: course.lab_location ?? "",
-        retire_date: course.retire_date ?? "",
+        ibm_retirement_date: course.ibm_retirement_date ?? "",
+        ip_owner: course.ip_owner ?? "",
         course_author_email: course.course_author_email ?? "",
+        planned_completion_date: course.planned_completion_date ?? "",
+        release_date: course.release_date ?? "",
+        retire_date: course.retire_date ?? "",
+
+        // Curriculum, Audience & Lab Specifications (Cols 21, 23-28)
         course_description: course.course_description ?? "",
+        skill_level: course.skill_level ?? "",
+        max_students: course.max_students ? String(course.max_students) : "",
+        pre_reqs: course.pre_reqs ?? "",
+        persona_audience_type: course.persona_audience_type ?? "",
+        lab_configuration: course.lab_configuration ?? "",
+        delivery_instruction_notes: course.delivery_instruction_notes ?? "",
+
+        // Financials, Credentials & Metadata (Cols 29-36)
+        instructor_daily_rate: course.instructor_daily_rate ? String(course.instructor_daily_rate) : "",
+        materials_cost: course.materials_cost ? String(course.materials_cost) : "",
+        lab_cost: course.lab_cost ? String(course.lab_cost) : "",
+        learning_path: course.learning_path ?? "",
+        badge: course.badge ?? "",
+        certification: course.certification ?? "",
+        notes: course.notes ?? "",
+        record_source: course.record_source ?? "",
       });
     }
   }, [course]);
@@ -112,40 +165,121 @@ export default function CourseDetailPage() {
   const handleSave = async () => {
     try {
       await updateCourse.mutateAsync({ id: courseId, body: nullifyEmptyStrings(form) as never });
-      toast.success("Course saved");
+      toast.success("Course changes saved successfully");
     } catch (error) {
       toast.error(getErrorMessage(error));
+    }
+  };
+
+  const handleDownloadOutline = async () => {
+    try {
+      toast.info("Generating course outline PDF...");
+      const response = await api.get(`/v1/courses/${courseId}/outline/pdf`, {
+        responseType: "blob",
+      });
+      const blob = new Blob([response.data], { type: "application/pdf" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const code = course?.nfolks_course_code || `COURSE-${courseId}`;
+      const safeCode = code.replace(/[^a-zA-Z0-9_-]/g, "_");
+      a.download = `${safeCode}_Course_Outline.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      toast.success("Course outline PDF downloaded successfully!");
+    } catch (error) {
+      toast.error(getErrorMessage(error) || "Failed to download course outline PDF");
     }
   };
 
   const handleAddLesson = async () => {
     if (!newLessonTitle.trim()) return;
     try {
-      await createLesson.mutateAsync({ title: newLessonTitle.trim(), sequence_order: (lessons?.length ?? 0) + 1 });
+      await createLesson.mutateAsync({
+        title: newLessonTitle.trim(),
+        duration_minutes: newLessonDuration ? Number(newLessonDuration) : undefined,
+        sequence_order: (lessons?.length ?? 0) + 1,
+      });
       setNewLessonTitle("");
+      setNewLessonDuration("");
+      toast.success("Lesson added successfully");
     } catch (error) {
       toast.error(getErrorMessage(error));
     }
   };
 
   if (isLoading || !course) {
-    return <div className="p-6 text-sm text-muted-foreground">Loading…</div>;
+    return <div className="p-6 text-sm text-muted-foreground">Loading course details…</div>;
   }
 
   return (
-    <div className="flex h-full flex-col gap-4 overflow-auto">
-      <SurfaceHeader
-        eyebrow={course.nfolks_course_code}
-        title={course.course_name}
-        meta={<StatusBadge label={formatEnumLabel(course.status)} tone={courseStatusTone(course.status)} />}
-      />
+    <div className="relative flex flex-col gap-4 pb-12">
+      {/* ── STICKY SURFACE HEADER WITH TOP RIGHT CONTROLS ── */}
+      <div className="sticky -top-4 z-30 -mt-4 -mx-4 px-4 py-2.5 bg-background/95 backdrop-blur-md border-b border-border shadow-xs">
+        <SurfaceHeader
+          eyebrow={course.nfolks_course_code}
+          title={course.course_name}
+          meta={
+            <div className="flex items-center gap-2">
+              <StatusBadge label={formatEnumLabel(course.status)} tone={courseStatusTone(course.status)} />
+              {course.platform && (
+                <span className="rounded-md bg-secondary px-2 py-0.5 text-xs font-semibold text-fg-2">
+                  {course.platform}
+                </span>
+              )}
+              {course.product && (
+                <span className="rounded-md bg-accent/70 px-2 py-0.5 text-xs font-medium text-fg-2">
+                  {course.product}
+                </span>
+              )}
+            </div>
+          }
+          actions={
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleDownloadOutline}
+                className="h-8 text-xs font-semibold gap-1.5 border-border hover:bg-secondary cursor-pointer"
+                title="Download Course Outline PDF"
+              >
+                <Download className="size-3.5" />
+                <span>Download Outline</span>
+              </Button>
+
+              <Button
+                size="sm"
+                onClick={handleSave}
+                disabled={updateCourse.isPending}
+                className="h-8 text-xs font-semibold gap-1.5 shadow-xs cursor-pointer"
+                title="Save changes to course"
+              >
+                <Save className="size-3.5" />
+                <span>Save changes</span>
+              </Button>
+
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setConfirmDelete(true)}
+                className="h-8 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive cursor-pointer"
+                title="Delete course"
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            </div>
+          }
+        />
+      </div>
 
       <TabStrip
         tabs={
           [
-            { id: "details", label: "Details", icon: FileText },
-            { id: "lessons", label: `Lessons${lessons && lessons.length > 0 ? ` (${lessons.length})` : ""}`, icon: BookOpen },
-            { id: "preview", label: "Preview", icon: Eye },
+            { id: "details", label: "Course Details & All Fields", icon: FileText },
+            { id: "lessons", label: `Curriculum & Lessons${lessons && lessons.length > 0 ? ` (${lessons.length})` : ""}`, icon: BookOpen },
+            { id: "preview", label: "Syllabus Preview", icon: Eye },
           ] satisfies TabDef<DetailTab>[]
         }
         active={activeTab}
@@ -155,141 +289,378 @@ export default function CourseDetailPage() {
 
       <div className="flex-1">
         {activeTab === "details" && (
-          <Card>
-            <CardContent className="grid grid-cols-2 gap-3.5 sm:grid-cols-3">
-              <div className="col-span-2 flex flex-col gap-1.5 sm:col-span-3">
-                <label className={FIELD_CLASS}>Course name</label>
-                <Input value={form.course_name ?? ""} onChange={set("course_name")} />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className={FIELD_CLASS}>Status</label>
-                <Select value={form.status ?? ""} onChange={set("status")}>
-                  {STATUS_OPTIONS.map((s) => (
-                    <option key={s} value={s}>
-                      {formatEnumLabel(s)}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className={FIELD_CLASS}>Vendor</label>
-                <Input value={form.vendor ?? ""} onChange={set("vendor")} />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className={FIELD_CLASS}>Platform</label>
-                <Input value={form.platform ?? ""} onChange={set("platform")} />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className={FIELD_CLASS}>Portfolio</label>
-                <Input value={form.portfolio ?? ""} onChange={set("portfolio")} />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className={FIELD_CLASS}>Product</label>
-                <Input value={form.product ?? ""} onChange={set("product")} />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className={FIELD_CLASS}>Modality</label>
-                <Input value={form.modality ?? ""} onChange={set("modality")} />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className={FIELD_CLASS}>Duration (days)</label>
-                <Input value={form.duration_days ?? ""} onChange={set("duration_days")} type="number" />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className={FIELD_CLASS}>Number of hours</label>
-                <Input value={form.num_hours ?? ""} onChange={set("num_hours")} type="number" />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className={FIELD_CLASS}>Skill level</label>
-                <Select value={form.skill_level ?? ""} onChange={set("skill_level")}>
-                  <option value="">—</option>
-                  {SKILL_LEVEL_OPTIONS.map((s) => (
-                    <option key={s} value={s}>
-                      {formatEnumLabel(s)}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className={FIELD_CLASS}>Lab location</label>
-                <Select value={form.lab_location ?? ""} onChange={set("lab_location")}>
-                  <option value="">—</option>
-                  {LAB_LOCATION_OPTIONS.map((s) => (
-                    <option key={s} value={s}>
-                      {formatEnumLabel(s)}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className={FIELD_CLASS}>Retire date</label>
-                <Input value={form.retire_date ?? ""} onChange={set("retire_date")} type="date" />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className={FIELD_CLASS}>Course author email</label>
-                <Input value={form.course_author_email ?? ""} onChange={set("course_author_email")} type="email" />
-              </div>
-              <div className="col-span-2 flex flex-col gap-1.5 sm:col-span-3">
-                <label className={FIELD_CLASS}>Description</label>
-                <textarea
-                  className="min-h-24 w-full rounded-lg border border-input/60 bg-secondary px-2.5 py-1.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/20"
-                  value={form.course_description ?? ""}
-                  onChange={set("course_description")}
-                />
-              </div>
-            </CardContent>
-          </Card>
+          <div className="space-y-6">
+            {/* ── SECTION 1: CORE IDENTIFICATION & TAXONOMY (Cols 1-8) ── */}
+            <Card>
+              <CardContent className="p-5">
+                <div className="mb-4 flex items-center gap-2 border-b border-border-subtle pb-2.5">
+                  <Layers className="size-4 text-primary" />
+                  <h3 className="text-sm font-bold text-fg-1">Core Identification & Hierarchy</h3>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-3">
+                  <div className="col-span-1 sm:col-span-2 flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>Course Name</label>
+                    <Input value={form.course_name ?? ""} onChange={set("course_name")} />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>Status</label>
+                    <Select value={form.status ?? ""} onChange={set("status")}>
+                      {STATUS_OPTIONS.map((s) => (
+                        <option key={s} value={s}>
+                          {formatEnumLabel(s)}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>Course Code</label>
+                    <Input value={form.nfolks_course_code ?? ""} onChange={set("nfolks_course_code")} />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>IBM Course Codes</label>
+                    <Input placeholder="e.g. 6X101G, W701G" value={form.ibm_course_codes ?? ""} onChange={set("ibm_course_codes")} />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>on IBM PMT</label>
+                    <Input placeholder="e.g. Yes / No / Planned" value={form.on_ibm_pmt ?? ""} onChange={set("on_ibm_pmt")} />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>Vendor</label>
+                    <Input value={form.vendor ?? ""} onChange={set("vendor")} />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>Platform</label>
+                    <Input value={form.platform ?? ""} onChange={set("platform")} />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>Portfolio</label>
+                    <Input value={form.portfolio ?? ""} onChange={set("portfolio")} />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>Product</label>
+                    <Input value={form.product ?? ""} onChange={set("product")} />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* ── SECTION 2: MODALITY, DURATION & OUTLINE (Cols 9-13, 22) ── */}
+            <Card>
+              <CardContent className="p-5">
+                <div className="mb-4 flex items-center gap-2 border-b border-border-subtle pb-2.5">
+                  <Calendar className="size-4 text-primary" />
+                  <h3 className="text-sm font-bold text-fg-1">Modality, Duration & Outline Tracking</h3>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-4">
+                  <div className="flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>Modality</label>
+                    <Input placeholder="e.g. ILT, VILT, Blended" value={form.modality ?? ""} onChange={set("modality")} />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>Duration (days)</label>
+                    <Input type="number" step="0.5" value={form.duration_days ?? ""} onChange={set("duration_days")} />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>Number of Hours</label>
+                    <Input type="number" step="1" value={form.num_hours ?? ""} onChange={set("num_hours")} />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>Course Outline Status</label>
+                    <Select value={form.course_outline_status ?? ""} onChange={set("course_outline_status")}>
+                      <option value="">— Unspecified —</option>
+                      {OUTLINE_STATUS_OPTIONS.map((s) => (
+                        <option key={s} value={s}>
+                          {formatEnumLabel(s)}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+
+                  <div className="col-span-1 sm:col-span-4 flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>Link to Course Outline</label>
+                    <Input
+                      placeholder="https://... or shared document link"
+                      value={form.link_to_course_outline ?? ""}
+                      onChange={set("link_to_course_outline")}
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* ── SECTION 3: CURRICULUM, AUDIENCE & LAB SETUP (Cols 21, 23-28) ── */}
+            <Card>
+              <CardContent className="p-5">
+                <div className="mb-4 flex items-center gap-2 border-b border-border-subtle pb-2.5">
+                  <Award className="size-4 text-primary" />
+                  <h3 className="text-sm font-bold text-fg-1">Curriculum, Audience & Lab Specifications</h3>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-3">
+                  <div className="col-span-1 sm:col-span-3 flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>Course Description</label>
+                    <Textarea rows={3} value={form.course_description ?? ""} onChange={set("course_description")} />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>Skill Level</label>
+                    <Select value={form.skill_level ?? ""} onChange={set("skill_level")}>
+                      <option value="">— Unspecified —</option>
+                      {SKILL_LEVEL_OPTIONS.map((s) => (
+                        <option key={s} value={s}>
+                          {formatEnumLabel(s)}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>Max students</label>
+                    <Input type="number" placeholder="e.g. 15" value={form.max_students ?? ""} onChange={set("max_students")} />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>Pre Reqs</label>
+                    <Input placeholder="e.g. Linux fundamentals, Python basics" value={form.pre_reqs ?? ""} onChange={set("pre_reqs")} />
+                  </div>
+
+                  <div className="col-span-1 sm:col-span-3 flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>Persona</label>
+                    <Input placeholder="e.g. Solutions Architects, SecOps Engineers, Data Analysts" value={form.persona_audience_type ?? ""} onChange={set("persona_audience_type")} />
+                  </div>
+
+                  <div className="col-span-1 sm:col-span-3 flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>Lab Configuration</label>
+                    <Input placeholder="Cluster size, VM specs, cloud accounts" value={form.lab_configuration ?? ""} onChange={set("lab_configuration")} />
+                  </div>
+
+                  <div className="col-span-1 sm:col-span-3 flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>Delivery Instruction Notes</label>
+                    <Input placeholder="Instructor setup instructions, materials prep" value={form.delivery_instruction_notes ?? ""} onChange={set("delivery_instruction_notes")} />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* ── SECTION 4: OPERATIONS, SCHEDULE & OWNERSHIP (Cols 14-20) ── */}
+            <Card>
+              <CardContent className="p-5">
+                <div className="mb-4 flex items-center gap-2 border-b border-border-subtle pb-2.5">
+                  <Calendar className="size-4 text-primary" />
+                  <h3 className="text-sm font-bold text-fg-1">Operations, Schedule & Ownership</h3>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-4">
+                  <div className="flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>Lab Location (ITZ , nFolks, Instructor owned, N/A)</label>
+                    <Select value={form.lab_location ?? ""} onChange={set("lab_location")}>
+                      <option value="">— Unspecified —</option>
+                      {LAB_LOCATION_OPTIONS.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>IP Owner (nFolks, SubK)</label>
+                    <Select value={form.ip_owner ?? ""} onChange={set("ip_owner")}>
+                      <option value="">— Unspecified —</option>
+                      {IP_OWNER_OPTIONS.map((o) => (
+                        <option key={o} value={o}>
+                          {o}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+
+                  <div className="col-span-1 sm:col-span-2 flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>Course Author Email</label>
+                    <Input type="email" placeholder="author@nfolks.com" value={form.course_author_email ?? ""} onChange={set("course_author_email")} />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>Planned Completion Date</label>
+                    <Input type="date" value={form.planned_completion_date ?? ""} onChange={set("planned_completion_date")} />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>Release Date</label>
+                    <Input type="date" value={form.release_date ?? ""} onChange={set("release_date")} />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>Retire Date</label>
+                    <Input type="date" value={form.retire_date ?? ""} onChange={set("retire_date")} />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>IBM retirement date</label>
+                    <Input type="date" value={form.ibm_retirement_date ?? ""} onChange={set("ibm_retirement_date")} />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* ── SECTION 5: FINANCIALS, CREDENTIALS & METADATA (Cols 29-36) ── */}
+            <Card>
+              <CardContent className="p-5">
+                <div className="mb-4 flex items-center gap-2 border-b border-border-subtle pb-2.5">
+                  <DollarSign className="size-4 text-primary" />
+                  <h3 className="text-sm font-bold text-fg-1">Financials, Credentials & Metadata</h3>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-4">
+                  <div className="flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>Instructor Daily rate</label>
+                    <Input placeholder="e.g. 1500.00" value={form.instructor_daily_rate ?? ""} onChange={set("instructor_daily_rate")} />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>Materials Cost</label>
+                    <Input placeholder="e.g. 120.00" value={form.materials_cost ?? ""} onChange={set("materials_cost")} />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>Lab Cost</label>
+                    <Input placeholder="e.g. 250.00" value={form.lab_cost ?? ""} onChange={set("lab_cost")} />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>Learning Path</label>
+                    <Input placeholder="e.g. Security Specialist Track" value={form.learning_path ?? ""} onChange={set("learning_path")} />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>Badge</label>
+                    <Input placeholder="e.g. IBM Certified Specialist" value={form.badge ?? ""} onChange={set("badge")} />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>Certification</label>
+                    <Input placeholder="e.g. C1000-058" value={form.certification ?? ""} onChange={set("certification")} />
+                  </div>
+
+                  <div className="col-span-1 sm:col-span-2 flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>Record Source</label>
+                    <Input value={form.record_source ?? ""} onChange={set("record_source")} />
+                  </div>
+
+                  <div className="col-span-1 sm:col-span-4 flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>Notes</label>
+                    <Textarea rows={2} value={form.notes ?? ""} onChange={set("notes")} />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         )}
 
         {activeTab === "lessons" && (
-          <Card>
-            <CardContent className="flex flex-col gap-3">
-              {(lessons ?? []).map((lesson) => (
-                <LessonRow
-                  key={lesson.id}
-                  lesson={lesson}
-                  onDelete={() => deleteLesson.mutate(lesson.id)}
-                  onEditAttachment={() => setAttachmentLesson(lesson)}
-                  onViewAttachment={() => openViewer(lesson)}
-                />
-              ))}
-              {(lessons ?? []).length === 0 && <p className="text-sm text-muted-foreground">No lessons yet.</p>}
-              <div className="flex items-center gap-2 pt-2">
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-wrap items-center gap-2.5 bg-card/60 p-3 rounded-xl border border-border">
+              <div className="flex-1 min-w-[240px]">
                 <Input
-                  placeholder="New lesson title"
+                  placeholder="New lesson / class title…"
                   value={newLessonTitle}
                   onChange={(e) => setNewLessonTitle(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleAddLesson()}
                 />
-                <Button size="sm" variant="outline" onClick={handleAddLesson} disabled={createLesson.isPending}>
-                  <Plus className="size-4" /> Add
-                </Button>
               </div>
-            </CardContent>
-          </Card>
+              <div className="w-44">
+                <Input
+                  type="number"
+                  min="1"
+                  placeholder="Timeline (mins)"
+                  value={newLessonDuration}
+                  onChange={(e) => setNewLessonDuration(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleAddLesson()}
+                />
+              </div>
+              <Button size="sm" onClick={handleAddLesson} disabled={createLesson.isPending}>
+                <Plus className="size-4 mr-1" /> Add lesson
+              </Button>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              {(lessons ?? []).map((l, index) => (
+                <Card key={l.id}>
+                  <CardContent className="flex items-center justify-between p-3.5">
+                    <div className="flex items-center gap-3">
+                      <span className="font-mono text-xs font-semibold text-fg-3 w-6">{index + 1}.</span>
+                      <div>
+                        <div className="text-sm font-medium">{l.title}</div>
+                        <div className="flex items-center gap-2 text-xs text-fg-3 mt-0.5">
+                          {l.duration_minutes && <span>{l.duration_minutes} mins</span>}
+                          {l.attachment_content_type && (
+                            <span className="rounded bg-secondary px-1.5 py-0.2 text-[10px] uppercase font-bold text-fg-2">
+                              {l.attachment_content_type}
+                            </span>
+                          )}
+                          {l.attachment_url && <span className="truncate max-w-xs">{l.attachment_url}</span>}
+                          {l.attachment_s3_key && <span className="text-primary font-medium">Uploaded file in S3</span>}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      {(l.attachment_url || l.attachment_s3_key || l.description?.trim()) && (
+                        <Button size="sm" variant="ghost" onClick={() => openViewer(l)} className="h-8 text-xs">
+                          <Eye className="size-3.5 mr-1" /> Preview
+                        </Button>
+                      )}
+                      <Button size="sm" variant="outline" onClick={() => setAttachmentLesson(l)} className="h-8 text-xs">
+                        <Paperclip className="size-3.5 mr-1" /> Edit content
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => deleteLesson.mutateAsync(l.id)}
+                        className="h-8 text-destructive hover:bg-destructive/10"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+              {(!lessons || lessons.length === 0) && (
+                <div className="rounded-xl border border-dashed border-border p-8 text-center text-xs text-muted-foreground">
+                  No lessons defined for this course yet.
+                </div>
+              )}
+            </div>
+          </div>
         )}
 
-        {activeTab === "preview" && <CoursePreview courseName={course.course_name} lessons={lessons ?? []} />}
-      </div>
-
-      <div className="flex items-center gap-2.5 pt-2 pb-6">
-        <Button onClick={handleSave} disabled={updateCourse.isPending} className="gap-1.5">
-          <Save className="size-4" />
-          <span>{updateCourse.isPending ? "Saving…" : "Save changes"}</span>
-        </Button>
-        <Button variant="outline" onClick={() => navigate("/courses")} className="gap-1.5">
-          <ArrowLeft className="size-4" /> Back
-        </Button>
-        <Button variant="destructive" onClick={() => setConfirmDelete(true)} className="gap-1.5">
-          <Trash2 className="size-4" /> Delete
-        </Button>
+        {activeTab === "preview" && (
+          <CoursePreview
+            course={course}
+            lessons={lessons ?? []}
+            onOpenAttachment={(lesson) => openViewer(lesson)}
+          />
+        )}
       </div>
 
       <ConfirmDialog
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
-        title="Delete this course?"
-        description="This permanently deletes the course and all of its lessons."
+        title="Delete course"
+        description="Are you sure you want to permanently delete this course? All lessons will also be deleted."
         confirmLabel="Delete"
         destructive
         onConfirm={async () => {
@@ -298,113 +669,25 @@ export default function CourseDetailPage() {
         }}
       />
 
-      <LessonAttachmentDialog
-        lesson={attachmentLesson}
-        courseId={courseId}
-        open={!!attachmentLesson}
-        onOpenChange={(open) => !open && setAttachmentLesson(null)}
-      />
+      {attachmentLesson && (
+        <LessonAttachmentDialog
+          lesson={attachmentLesson}
+          open={Boolean(attachmentLesson)}
+          onOpenChange={(open) => !open && setAttachmentLesson(null)}
+          courseId={courseId}
+        />
+      )}
 
-      <ContentViewerDialog
-        open={!!viewer}
-        onOpenChange={(open) => !open && setViewer(null)}
-        title={viewer?.title ?? ""}
-        url={viewer?.url ?? null}
-        contentType={viewer?.contentType ?? null}
-        article={viewer?.article ?? null}
-      />
-    </div>
-  );
-}
-
-function LessonRow({
-  lesson,
-  onDelete,
-  onEditAttachment,
-  onViewAttachment,
-}: {
-  lesson: Lesson;
-  onDelete: () => void;
-  onEditAttachment: () => void;
-  onViewAttachment: () => void;
-}) {
-  const hasAttachment = !!(lesson.attachment_url || lesson.attachment_s3_key);
-  const hasArticle = !!lesson.description?.trim();
-  const hasAnyContent = hasAttachment || hasArticle;
-  const isVideo =
-    lesson.attachment_content_type?.startsWith("video/") ||
-    (lesson.attachment_url && /(?:youtube\.com|youtu\.be|\.mp4|\.webm)/i.test(lesson.attachment_url));
-  const isPdf =
-    lesson.attachment_content_type === "application/pdf" ||
-    (lesson.attachment_url && /\.pdf/i.test(lesson.attachment_url));
-
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-border-subtle bg-surface-2 px-3.5 py-2.5 transition-colors hover:border-border">
-      <div className="flex items-center gap-3 min-w-0">
-        <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
-          {lesson.sequence_order}
-        </span>
-        <span className="truncate text-sm font-medium text-fg-1">{lesson.title}</span>
-        {lesson.duration_minutes && (
-          <span className="shrink-0 text-xs text-muted-foreground">{lesson.duration_minutes} min</span>
-        )}
-
-        {/* Content Badges */}
-        {hasArticle && !hasAttachment && (
-          <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:text-amber-300 border border-amber-500/20">
-            <AlignLeft className="size-3" /> Article
-          </span>
-        )}
-        {isVideo && (
-          <span className="inline-flex items-center gap-1 rounded-md bg-sky-500/10 px-2 py-0.5 text-[11px] font-semibold text-sky-800 dark:text-sky-300 border border-sky-500/20">
-            <Video className="size-3" /> Video
-          </span>
-        )}
-        {isPdf && (
-          <span className="inline-flex items-center gap-1 rounded-md bg-rose-500/10 px-2 py-0.5 text-[11px] font-semibold text-rose-800 dark:text-rose-300 border border-rose-500/20">
-            <FileText className="size-3" /> PDF
-          </span>
-        )}
-      </div>
-
-      <div className="flex items-center gap-1 shrink-0">
-        {hasAnyContent && (
-          <button
-            type="button"
-            onClick={onViewAttachment}
-            className="rounded-md p-1.5 text-fg-3 hover:bg-accent hover:text-primary transition-colors cursor-pointer"
-            aria-label="Preview lesson content"
-            title="Preview content"
-          >
-            <Eye className="size-4" />
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={onEditAttachment}
-          className={cn(
-            "rounded-md p-1.5 transition-colors cursor-pointer flex items-center gap-1",
-            hasArticle
-              ? "text-amber-800 dark:text-amber-400 hover:bg-amber-500/15"
-              : hasAttachment
-                ? "text-primary hover:bg-accent"
-                : "text-fg-3 hover:bg-accent hover:text-fg-1",
-          )}
-          aria-label="Edit lesson content"
-          title={hasArticle ? "Open Article Studio" : hasAttachment ? "Edit attachment" : "Add content / article"}
-        >
-          {hasArticle ? <PenLine className="size-4" /> : <Paperclip className="size-4" />}
-        </button>
-        <button
-          type="button"
-          onClick={onDelete}
-          className="rounded-md p-1.5 text-fg-3 hover:bg-destructive/10 hover:text-destructive transition-colors cursor-pointer"
-          aria-label="Delete lesson"
-          title="Delete lesson"
-        >
-          <Trash2 className="size-4" />
-        </button>
-      </div>
+      {viewer && (
+        <ContentViewerDialog
+          open={Boolean(viewer)}
+          onOpenChange={(open) => !open && setViewer(null)}
+          title={viewer.title}
+          url={viewer.url}
+          contentType={viewer.contentType}
+          article={viewer.article}
+        />
+      )}
     </div>
   );
 }

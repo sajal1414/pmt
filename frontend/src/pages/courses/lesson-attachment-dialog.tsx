@@ -235,6 +235,9 @@ export function LessonAttachmentDialog({
   const [clearAttachmentOnArticle, setClearAttachmentOnArticle] = useState(true);
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [titleValue, setTitleValue] = useState("");
+  const [durationValue, setDurationValue] = useState("");
+  const [sequenceValue, setSequenceValue] = useState("");
   const [viewer, setViewer] = useState<{ url: string | null; contentType: string | null; article?: string | null } | null>(
     null,
   );
@@ -243,6 +246,9 @@ export function LessonAttachmentDialog({
   // Sync state when lesson or open state changes
   useEffect(() => {
     if (lesson && open) {
+      setTitleValue(lesson.title ?? "");
+      setDurationValue(lesson.duration_minutes ? String(lesson.duration_minutes) : "");
+      setSequenceValue(lesson.sequence_order ? String(lesson.sequence_order) : "1");
       setLinkValue(lesson.attachment_url ?? "");
       setArticleValue(lesson.description ?? "");
       setFile(null);
@@ -330,8 +336,16 @@ export function LessonAttachmentDialog({
 
   const handleSaveLink = async () => {
     try {
-      await updateLesson.mutateAsync({ id: lesson.id, body: { attachment_url: linkValue } });
-      toast.success("Attachment link saved");
+      await updateLesson.mutateAsync({
+        id: lesson.id,
+        body: {
+          title: titleValue.trim() || lesson.title,
+          attachment_url: linkValue.trim() || null,
+          duration_minutes: durationValue ? Number(durationValue) : null,
+          sequence_order: sequenceValue ? Number(sequenceValue) : lesson.sequence_order,
+        },
+      });
+      toast.success("Attachment link and lesson timeline saved");
       onOpenChange(false);
     } catch (error) {
       toast.error(getErrorMessage(error));
@@ -341,14 +355,17 @@ export function LessonAttachmentDialog({
   const handleSaveArticle = async () => {
     try {
       const body: Record<string, unknown> = {
+        title: titleValue.trim() || lesson.title,
         description: articleValue,
+        duration_minutes: durationValue ? Number(durationValue) : null,
+        sequence_order: sequenceValue ? Number(sequenceValue) : lesson.sequence_order,
       };
       if (clearAttachmentOnArticle && (lesson.attachment_url || lesson.attachment_s3_key)) {
         body.attachment_url = null;
       }
 
       await updateLesson.mutateAsync({ id: lesson.id, body: body as never });
-      toast.success("Article saved successfully");
+      toast.success("Article and lesson timeline saved");
       onOpenChange(false);
     } catch (error) {
       toast.error(getErrorMessage(error));
@@ -362,6 +379,16 @@ export function LessonAttachmentDialog({
     }
     setUploading(true);
     try {
+      if (titleValue.trim() !== lesson.title || durationValue || sequenceValue) {
+        await updateLesson.mutateAsync({
+          id: lesson.id,
+          body: {
+            title: titleValue.trim() || lesson.title,
+            duration_minutes: durationValue ? Number(durationValue) : null,
+            sequence_order: sequenceValue ? Number(sequenceValue) : lesson.sequence_order,
+          },
+        });
+      }
       await uploadFileViaPresignedPost(`/v1/lessons/${lesson.id}/attachment`, file);
       toast.success("File uploaded successfully");
       onOpenChange(false);
@@ -405,16 +432,16 @@ export function LessonAttachmentDialog({
           className="sm:max-w-5xl w-[95vw] h-[86vh] max-h-[860px] min-h-[580px] flex flex-col p-0 overflow-hidden gap-0 border-border bg-card shadow-2xl"
         >
           {/* Header Bar - Fixed height, never shifts position */}
-          <div className="shrink-0 border-b border-border/80 px-6 py-3.5 bg-secondary/30">
+          <div className="shrink-0 border-b border-border/80 px-6 py-3 bg-secondary/30">
             <DialogHeader>
               <div className="flex items-center justify-between gap-4">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-bold text-primary">
-                      {lesson.sequence_order}
+                      {sequenceValue || lesson.sequence_order}
                     </span>
                     <DialogTitle className="text-base font-bold text-fg-1 truncate max-w-lg">
-                      Lesson Content — {lesson.title}
+                      Lesson Content — {titleValue || lesson.title}
                     </DialogTitle>
                   </div>
                   <p className="mt-0.5 text-xs text-muted-foreground truncate">
@@ -468,6 +495,44 @@ export function LessonAttachmentDialog({
                 </div>
               </div>
             </DialogHeader>
+          </div>
+
+          {/* Lesson Timeline & Metadata bar */}
+          <div className="shrink-0 border-b border-border bg-card/60 px-6 py-2.5 flex flex-wrap items-center gap-4">
+            <div className="flex-1 min-w-[200px] flex items-center gap-2">
+              <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider shrink-0">Lesson Title:</label>
+              <Input
+                value={titleValue}
+                onChange={(e) => setTitleValue(e.target.value)}
+                placeholder="Lesson title..."
+                className="h-8 text-xs font-medium"
+              />
+            </div>
+
+            <div className="w-48 flex items-center gap-2">
+              <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider shrink-0">Timeline (mins):</label>
+              <Input
+                type="number"
+                min="1"
+                value={durationValue}
+                onChange={(e) => setDurationValue(e.target.value)}
+                placeholder="e.g. 45"
+                className="h-8 text-xs font-medium"
+              />
+            </div>
+
+            <div className="w-32 flex items-center gap-2">
+              <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider shrink-0">Sequence:</label>
+              <Input
+                type="number"
+                min="1"
+                value={sequenceValue}
+                onChange={(e) => setSequenceValue(e.target.value)}
+                placeholder="1"
+                className="h-8 text-xs font-medium"
+              />
+            </div>
+          </div>
 
             {/* Current Active Attachment Indicator Bar */}
             {(lesson.attachment_url || lesson.attachment_s3_key || lesson.description) && (
@@ -496,7 +561,6 @@ export function LessonAttachmentDialog({
                 </button>
               </div>
             )}
-          </div>
 
           {/* Body Canvas - Fixed size, fills flex-1 min-h-0 */}
           <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-background/40">

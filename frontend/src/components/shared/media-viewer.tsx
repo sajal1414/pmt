@@ -2,9 +2,30 @@ import { AlignLeft, FileQuestion, FileText, Link2, SquarePlay, Video } from "luc
 import type { Lesson } from "@/lib/types";
 import { MarkdownArticle } from "@/components/shared/markdown-article";
 
-export type ViewerKind = "video" | "youtube" | "pdf" | "generic" | "article" | "empty";
+export type ViewerKind = "video" | "youtube" | "vimeo" | "loom" | "pdf" | "generic" | "article" | "empty";
 
-const YOUTUBE_PATTERN = /(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]+)/;
+export function extractYouTubeId(urlStr: string): string | null {
+  if (!urlStr) return null;
+  try {
+    const raw = urlStr.trim();
+    const url = new URL(raw.startsWith("http") ? raw : `https://${raw}`);
+    if (url.hostname.includes("youtube.com")) {
+      if (url.searchParams.has("v")) return url.searchParams.get("v");
+      const parts = url.pathname.split("/").filter(Boolean);
+      if (parts[0] === "embed" || parts[0] === "shorts" || parts[0] === "live" || parts[0] === "v") {
+        return parts[1] || null;
+      }
+    }
+    if (url.hostname === "youtu.be" || url.hostname.endsWith(".youtu.be")) {
+      const parts = url.pathname.split("/").filter(Boolean);
+      return parts[0] || null;
+    }
+  } catch {
+    // fallback
+  }
+  const match = urlStr.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?.*?v=|shorts\/|live\/))([\w-]{11})/);
+  return match ? match[1] : null;
+}
 
 export function resolveViewerKind(
   url: string | null,
@@ -14,9 +35,22 @@ export function resolveViewerKind(
   if (contentType?.startsWith("video/")) return { kind: "video", embedUrl: url };
   if (contentType === "application/pdf") return { kind: "pdf", embedUrl: url };
 
-  // No content type — this is a pasted link, not an uploaded file. Guess from the URL itself.
-  const youtubeMatch = url.match(YOUTUBE_PATTERN);
-  if (youtubeMatch) return { kind: "youtube", embedUrl: `https://www.youtube.com/embed/${youtubeMatch[1]}` };
+  // Guess from URL
+  const ytId = extractYouTubeId(url);
+  if (ytId) {
+    return { kind: "youtube", embedUrl: `https://www.youtube.com/embed/${ytId}?rel=0` };
+  }
+
+  const vimeoMatch = url.match(/vimeo\.com\/(?:channels\/(?:\w+\/)?|groups\/[^/]*\/videos\/|album\/(?:\d+\/)?video\/|video\/|)(\d+)/);
+  if (vimeoMatch) {
+    return { kind: "vimeo", embedUrl: `https://player.vimeo.com/video/${vimeoMatch[1]}` };
+  }
+
+  const loomMatch = url.match(/loom\.com\/share\/([a-zA-Z0-9]+)/);
+  if (loomMatch) {
+    return { kind: "loom", embedUrl: `https://www.loom.com/embed/${loomMatch[1]}` };
+  }
+
   if (/\.(mp4|webm|ogg|mov)(\?|$)/i.test(url)) return { kind: "video", embedUrl: url };
   return { kind: "generic", embedUrl: url };
 }
@@ -36,6 +70,8 @@ export function ViewerKindIcon({ kind, className }: { kind: ViewerKind; classNam
     case "video":
       return <Video className={className} />;
     case "youtube":
+    case "vimeo":
+    case "loom":
       return <SquarePlay className={className} />;
     case "pdf":
       return <FileText className={className} />;
@@ -48,13 +84,6 @@ export function ViewerKindIcon({ kind, className }: { kind: ViewerKind; classNam
   }
 }
 
-/**
- * Renders lesson/course content — video player, YouTube embed, PDF, a generic
- * iframe, or a plain-text "article" — filling whatever box the caller gives
- * it. No Dialog/modal wrapper here: callers that want a popup wrap this in
- * one (see ContentViewerDialog); callers that want an inline watch area (the
- * course Preview tab) render it directly in the page.
- */
 export function MediaViewer({
   url,
   contentType,
@@ -63,7 +92,6 @@ export function MediaViewer({
 }: {
   url: string | null;
   contentType: string | null;
-  /** Plain-text lesson description, shown when there's no video/PDF attachment. */
   article?: string | null;
   className?: string;
 }) {
@@ -92,26 +120,29 @@ export function MediaViewer({
 
   if (kind === "video") {
     return (
-      // eslint-disable-next-line jsx-a11y/media-has-caption
-      <video
-        key={embedUrl}
-        controls
-        autoPlay
-        playsInline
-        preload="auto"
-        className={`bg-black ${className}`}
-        src={embedUrl}
-      />
+      <div className={`relative overflow-hidden bg-black flex items-center justify-center rounded-xl ${className}`}>
+        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+        <video
+          key={embedUrl}
+          controls
+          playsInline
+          preload="metadata"
+          className="h-full w-full object-contain"
+          src={embedUrl}
+        >
+          Your browser does not support the video tag.
+        </video>
+      </div>
     );
   }
 
-  if (kind === "youtube") {
+  if (kind === "youtube" || kind === "vimeo" || kind === "loom") {
     return (
-      <div className={`overflow-hidden ${className}`}>
+      <div className={`relative overflow-hidden aspect-video bg-black flex items-center justify-center rounded-xl shadow-lg ${className}`}>
         <iframe
           key={embedUrl}
           src={embedUrl}
-          className="h-full w-full"
+          className="h-full w-full border-0"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
           allowFullScreen
           title="Lesson video"
@@ -124,9 +155,6 @@ export function MediaViewer({
   return (
     <div className={`flex flex-col gap-1.5 ${className}`}>
       <iframe src={embedUrl} className="h-full w-full flex-1 rounded-lg border border-border" title="Lesson attachment" />
-      <a href={url ?? undefined} target="_blank" rel="noopener noreferrer" className="self-start text-xs text-primary hover:underline">
-        Not displaying correctly? Open in a new tab ↗
-      </a>
     </div>
   );
 }

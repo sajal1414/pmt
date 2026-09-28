@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Plus, Search, Pencil, Trash2 } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Eye } from "lucide-react";
 import { SurfaceHeader } from "@/components/shared/surface-header";
 import { DataTable, type DataTableColumn } from "@/components/shared/data-table";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { useDeleteInstructor, useInstructors } from "@/hooks/use-instructors";
 import type { Instructor } from "@/lib/types";
 import { InstructorFormDialog } from "./instructor-form-dialog";
+import { InstructorDetailDialog } from "./instructor-detail-dialog";
 import { toast } from "sonner";
 import { getErrorMessage } from "@/lib/api";
 
@@ -15,7 +16,9 @@ export default function InstructorsPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [editing, setEditing] = useState<Instructor | null>(null);
+  const [viewing, setViewing] = useState<Instructor | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
   const [toDelete, setToDelete] = useState<Instructor | null>(null);
   const pageSize = 20;
   const deleteInstructor = useDeleteInstructor();
@@ -24,19 +27,80 @@ export default function InstructorsPage() {
   const { data, isLoading } = useInstructors(params);
 
   const columns: DataTableColumn<Instructor>[] = [
-    { id: "name", label: "Name", render: (i) => <span className="font-medium">{i.name}</span> },
-    { id: "email", label: "Email", render: (i) => i.email },
-    { id: "location", label: "Location", width: "140px", render: (i) => i.location ?? "—" },
-    { id: "vendor", label: "Vendor", width: "120px", render: (i) => i.vendor ?? "—" },
-    { id: "feedback_score", label: "Feedback", width: "90px", render: (i) => i.feedback_score ?? "—" },
+    {
+      id: "name",
+      label: "Name & Contact",
+      render: (i) => (
+        <div>
+          <span className="font-semibold text-fg-1 hover:text-primary transition-colors cursor-pointer">{i.name}</span>
+          <span className="block text-[11px] text-muted-foreground">{i.email}</span>
+        </div>
+      ),
+    },
+    {
+      id: "platform",
+      label: "Platform",
+      width: "140px",
+      render: (i) => (
+        <span className="rounded-md bg-secondary/80 px-2 py-0.5 text-xs font-semibold text-fg-2">
+          {i.platform || "—"}
+        </span>
+      ),
+    },
+    {
+      id: "product",
+      label: "Products & Can Teach",
+      render: (i) => {
+        const product = i.product;
+        const skills = i.skills_products || i.courses_can_teach;
+        return (
+          <div className="max-w-xs">
+            {product && <span className="font-medium text-xs text-fg-1 block">{product}</span>}
+            {skills && (
+              <span className="line-clamp-1 text-[11px] text-muted-foreground">
+                {skills}
+              </span>
+            )}
+            {!product && !skills && <span className="text-muted-foreground text-xs">—</span>}
+          </div>
+        );
+      },
+    },
+    { id: "location", label: "Location", width: "130px", render: (i) => i.location ?? "—" },
+    { id: "vendor", label: "Vendor", width: "110px", render: (i) => i.vendor ?? "—" },
+    {
+      id: "feedback_score",
+      label: "Feedback",
+      width: "90px",
+      render: (i) =>
+        i.feedback_score ? (
+          <span className="font-mono text-xs font-bold text-emerald-600 dark:text-emerald-400">
+            {i.feedback_score} ★
+          </span>
+        ) : (
+          <span className="text-muted-foreground text-xs">—</span>
+        ),
+    },
     {
       id: "actions",
       label: "",
-      width: "80px",
+      width: "100px",
       align: "right",
       render: (i) => (
         <div className="flex items-center justify-end gap-1">
           <button
+            title="View Details"
+            onClick={(e) => {
+              e.stopPropagation();
+              setViewing(i);
+              setDetailOpen(true);
+            }}
+            className="rounded-sm p-1.5 text-fg-3 hover:bg-accent hover:text-fg-1"
+          >
+            <Eye className="size-3.5" />
+          </button>
+          <button
+            title="Edit Instructor"
             onClick={(e) => {
               e.stopPropagation();
               setEditing(i);
@@ -47,6 +111,7 @@ export default function InstructorsPage() {
             <Pencil className="size-3.5" />
           </button>
           <button
+            title="Delete Instructor"
             onClick={(e) => {
               e.stopPropagation();
               setToDelete(i);
@@ -78,17 +143,19 @@ export default function InstructorsPage() {
         }
       />
 
-      <div className="relative w-64">
-        <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-fg-3" />
-        <Input
-          placeholder="Search name or skills…"
-          className="pl-8"
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setPage(0);
-          }}
-        />
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[280px] max-w-md flex-1">
+          <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-fg-3" />
+          <Input
+            placeholder="Search name, platform, product, or courses can teach…"
+            className="pl-8 text-xs"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(0);
+            }}
+          />
+        </div>
       </div>
 
       <DataTable
@@ -97,12 +164,26 @@ export default function InstructorsPage() {
         getRowId={(i) => i.id}
         isLoading={isLoading}
         emptyMessage="No instructors found."
+        onRowClick={(i) => {
+          setViewing(i);
+          setDetailOpen(true);
+        }}
         page={page}
         hasNextPage={(data ?? []).length === pageSize}
         onPageChange={setPage}
       />
 
       <InstructorFormDialog open={formOpen} onOpenChange={setFormOpen} instructor={editing} />
+
+      <InstructorDetailDialog
+        instructor={viewing}
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+        onEdit={(inst) => {
+          setEditing(inst);
+          setFormOpen(true);
+        }}
+      />
 
       <ConfirmDialog
         open={!!toDelete}

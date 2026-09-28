@@ -169,7 +169,34 @@ def map_row(row: dict) -> dict:
             value = str(value).strip().lower()
         elif field == "on_ibm_pmt":
             value = str(value).strip()
-        fields[field] = value
+        elif field in ("duration_days", "num_hours", "instructor_daily_rate", "materials_cost", "lab_cost"):
+            if isinstance(value, str) and value.strip().startswith("="):
+                value = None
+            else:
+                try:
+                    clean_v = str(value).replace("$", "").replace(",", "").strip()
+                    value = float(clean_v)
+                except (ValueError, TypeError):
+                    value = None
+        elif field in ("ibm_retirement_date", "planned_completion_date", "release_date", "retire_date"):
+            if hasattr(value, "date"):
+                value = value.date()
+            elif isinstance(value, str):
+                try:
+                    import datetime
+                    value = datetime.datetime.fromisoformat(value.strip().split("T")[0]).date()
+                except Exception:
+                    value = None
+
+        if value is not None:
+            fields[field] = value
+
+    if "num_hours" not in fields and "duration_days" in fields and fields["duration_days"]:
+        try:
+            fields["num_hours"] = float(fields["duration_days"]) * 8
+        except Exception:
+            pass
+
     return fields
 
 

@@ -6,7 +6,7 @@ FILTERABLE_COLUMNS = frozenset(
     {"vendor", "platform", "portfolio", "product", "status", "modality", "lab_location", "skill_level", "ip_owner"}
 )
 RANGE_COLUMNS = frozenset({"retire_date", "release_date", "planned_completion_date"})
-SEARCH_COLUMNS = ["course_name", "course_description"]
+SEARCH_COLUMNS = ["nfolks_course_code", "course_name", "ibm_course_codes", "course_description"]
 SORTABLE_COLUMNS = FILTERABLE_COLUMNS | RANGE_COLUMNS | {"id", "course_name", "nfolks_course_code", "created_at"}
 
 

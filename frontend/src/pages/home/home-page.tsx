@@ -1,11 +1,8 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import {
   ArrowRight,
-  Award,
   BarChart3,
-  BookOpen,
-  CheckCircle2,
   Clock,
   Cpu,
   FileSpreadsheet,
@@ -13,14 +10,12 @@ import {
   Layers,
   Shield,
   Sparkles,
-  Star,
   Zap,
 } from "lucide-react";
 import { StatusBadge, courseStatusTone, formatEnumLabel } from "@/components/shared/status-badge";
 import { useAuthStore, isAdmin } from "@/stores/auth-store";
 import { useCourses } from "@/hooks/use-courses";
 import { useInstructors } from "@/hooks/use-instructors";
-import { useDeliveries } from "@/hooks/use-deliveries";
 import { BulkImportDialog } from "@/pages/courses/bulk-import-dialog";
 import { Button } from "@/components/ui/button";
 
@@ -30,24 +25,42 @@ export default function HomePage() {
 
   const [importOpen, setImportOpen] = useState(false);
 
-  const coursesQuery = useCourses({ limit: 200 });
+  const coursesQuery = useCourses({ limit: 300 });
   const instructorsQuery = useInstructors({ limit: 200 });
-  const deliveriesQuery = useDeliveries({ limit: 200 });
 
   const courses = coursesQuery.data ?? [];
   const instructors = instructorsQuery.data ?? [];
-  const deliveries = deliveriesQuery.data ?? [];
 
   // Compute status distributions
   const publishedCount = courses.filter((c) => c.status === "published").length;
-  const inProgressCount = courses.filter((c) => c.status === "in_progress" || c.status === "for_review").length;
-  const pipelineCount = courses.filter((c) => c.status === "pipeline" || c.status === "backlog").length;
+  const inProgressCount = courses.filter((c) => c.status === "in_progress" || c.status === "for_review" || c.status === "updated_version").length;
+  const pipelineCount = courses.filter((c) => c.status === "pipeline" || c.status === "backlog" || c.status === "draft").length;
+
+  // Platform-Level Lifecycle Aggregation (Client Directive: Replace Client Deliveries with Platform-level Release Cycle)
+  const platformStats = useMemo(() => {
+    const map: Record<string, { total: number; published: number; inProgress: number; pipeline: number }> = {};
+    for (const c of courses) {
+      const plat = c.platform?.trim() || "Other Enterprise";
+      if (!map[plat]) {
+        map[plat] = { total: 0, published: 0, inProgress: 0, pipeline: 0 };
+      }
+      map[plat].total += 1;
+      if (c.status === "published") {
+        map[plat].published += 1;
+      } else if (c.status === "in_progress" || c.status === "for_review" || c.status === "updated_version") {
+        map[plat].inProgress += 1;
+      } else {
+        map[plat].pipeline += 1;
+      }
+    }
+    return Object.entries(map)
+      .sort((a, b) => b[1].total - a[1].total)
+      .slice(0, 4);
+  }, [courses]);
 
   const recentCourses = [...courses]
-    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+    .sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime())
     .slice(0, 4);
-
-  const recentDeliveries = [...deliveries].slice(0, 3);
 
   // Time of day greeting
   const hour = new Date().getHours();
@@ -87,7 +100,7 @@ export default function HomePage() {
             </h1>
             <p className="mt-2.5 text-sm leading-relaxed text-primary-foreground/85 sm:text-base font-sans">
               Centralized intelligence for enterprise technical courseware, certified instructor networks,
-              interactive lab curricula, and real-time client delivery evaluations.
+              interactive lab curricula, and platform-level curriculum release operations.
             </p>
           </div>
 
@@ -98,73 +111,64 @@ export default function HomePage() {
                 to="/courses"
                 className="inline-flex items-center gap-2 rounded-xl bg-gold px-4 py-2.5 text-xs font-bold text-slate-950 shadow-md shadow-black/20 transition-all hover:bg-gold/90 hover:scale-[1.02] active:scale-[0.98]"
               >
-                <BookOpen className="size-4" />
-                <span>Browse Courseware</span>
+                <span>View Full Catalog</span>
+                <ArrowRight className="size-3.5" />
               </Link>
-
-              {/* Deliveries Log quick action disabled for now */}
 
               {admin && (
                 <Button
-                  onClick={() => setImportOpen(true)}
-                  variant="outline"
                   size="sm"
-                  className="h-9 gap-2 rounded-xl border-white/20 bg-white/10 px-3.5 text-xs font-semibold text-white backdrop-blur-md transition-all hover:bg-white/20 hover:border-white/35"
+                  variant="outline"
+                  onClick={() => setImportOpen(true)}
+                  className="rounded-xl border-white/20 bg-white/10 text-white backdrop-blur-sm transition-all hover:bg-white/20"
                 >
-                  <FileSpreadsheet className="size-4 text-emerald-300" />
-                  <span>Bulk Import (.xlsx)</span>
+                  <FileSpreadsheet className="size-3.5 mr-1 text-gold" /> Bulk Import Sheet
                 </Button>
               )}
             </div>
 
-            {/* Live KPI Cards */}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-3.5 py-2 backdrop-blur-md">
-                <div className="text-xl font-bold font-mono text-white">{courses.length}</div>
-                <div className="text-[10.5px] uppercase tracking-wider text-primary-foreground/70">Courses</div>
+            <div className="flex flex-wrap items-center gap-5 text-xs">
+              <div className="flex items-center gap-2 border-r border-white/15 pr-5">
+                <span className="font-mono text-xl font-extrabold text-white">{courses.length}</span>
+                <span className="text-primary-foreground/70 leading-tight">Total Courses<br />in Inventory</span>
               </div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-3.5 py-2 backdrop-blur-md">
-                <div className="text-xl font-bold font-mono text-gold">{instructors.length}</div>
-                <div className="text-[10.5px] uppercase tracking-wider text-primary-foreground/70">Instructors</div>
+
+              <div className="flex items-center gap-2 border-r border-white/15 pr-5">
+                <span className="font-mono text-xl font-extrabold text-white">{publishedCount}</span>
+                <span className="text-primary-foreground/70 leading-tight">Production<br />Published</span>
               </div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-3.5 py-2 backdrop-blur-md">
-                <div className="text-xl font-bold font-mono text-white">100%</div>
-                <div className="text-[10.5px] uppercase tracking-wider text-primary-foreground/70">Audited</div>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-3.5 py-2 backdrop-blur-md">
-                <div className="flex items-center gap-1 text-xl font-bold font-mono text-emerald-300">
-                  <span>9.8</span>
-                  <Star className="size-3.5 fill-gold text-gold" />
-                </div>
-                <div className="text-[10.5px] uppercase tracking-wider text-primary-foreground/70">NPS Score</div>
+
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xl font-extrabold text-white">{instructors.length}</span>
+                <span className="text-primary-foreground/70 leading-tight">Certified<br />Instructors</span>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* ── 2. MIDDLE BENTO ROW (3 Equal / Balanced Columns) ── */}
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
-        {/* Card A: Curriculum Lifecycle & Release Stages */}
+      {/* ── 2. METRICS & LIFECYCLE GRID (3 CARDS) ── */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* Card A: Overall Release Lifecycle */}
         <div className="flex flex-col justify-between rounded-3xl border border-border bg-card p-6 shadow-sm transition-all hover:shadow-md">
           <div>
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-fg-3 flex items-center gap-1.5">
-                <BarChart3 className="size-3.5 text-primary" /> Curriculum Health
+                <BarChart3 className="size-3.5 text-primary" /> Overall Catalog Health
               </span>
               <span className="rounded-full bg-secondary px-2 py-0.5 font-mono text-[11px] font-semibold text-fg-2">
                 {courses.length} Modules
               </span>
             </div>
 
-            <h2 className="mt-2.5 text-base font-bold text-fg-1">Release Lifecycle</h2>
-            <p className="mt-1 text-xs text-muted-foreground">Course readiness and delivery authorization</p>
+            <h2 className="mt-2.5 text-base font-bold text-fg-1">Global Release Lifecycle</h2>
+            <p className="mt-1 text-xs text-muted-foreground">Portfolio-wide course readiness and pipeline</p>
 
             <div className="mt-5 space-y-4">
               <div>
                 <div className="flex justify-between text-xs font-medium">
                   <span className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400">
-                    <span className="size-2 rounded-full bg-emerald-500" /> Published & Production Ready
+                    <span className="size-2 rounded-full bg-emerald-500" /> Published & Ready
                   </span>
                   <span className="font-mono text-fg-1 font-bold">{publishedCount}</span>
                 </div>
@@ -179,7 +183,7 @@ export default function HomePage() {
               <div>
                 <div className="flex justify-between text-xs font-medium">
                   <span className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400">
-                    <span className="size-2 rounded-full bg-amber-500" /> Under Review & Validation
+                    <span className="size-2 rounded-full bg-amber-500" /> In Review & Update
                   </span>
                   <span className="font-mono text-fg-1 font-bold">{inProgressCount}</span>
                 </div>
@@ -194,7 +198,7 @@ export default function HomePage() {
               <div>
                 <div className="flex justify-between text-xs font-medium">
                   <span className="flex items-center gap-1.5 text-sky-700 dark:text-sky-400">
-                    <span className="size-2 rounded-full bg-sky-500" /> Pipeline & Scoping
+                    <span className="size-2 rounded-full bg-sky-500" /> Pipeline & Backlog
                   </span>
                   <span className="font-mono text-fg-1 font-bold">{pipelineCount}</span>
                 </div>
@@ -209,62 +213,81 @@ export default function HomePage() {
           </div>
 
           <div className="mt-6 flex items-center justify-between border-t border-border-subtle pt-3 text-xs">
-            <span className="text-muted-foreground">Outline validation target</span>
-            <span className="font-semibold text-primary">100% Coverage</span>
+            <span className="text-muted-foreground">Catalog completion rate</span>
+            <span className="font-semibold text-primary">
+              {courses.length ? Math.round((publishedCount / courses.length) * 100) : 0}% Production Ready
+            </span>
           </div>
         </div>
 
-        {/* Card B: Enterprise Client Engagements */}
+        {/* Card B: Platform-Level Release Lifecycle (CLIENT DIRECTIVE: Down to Platform level) */}
         <div className="flex flex-col justify-between rounded-3xl border border-border bg-card p-6 shadow-sm transition-all hover:shadow-md">
           <div>
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-fg-3 flex items-center gap-1.5">
-                <Award className="size-3.5 text-gold" /> Client Deliveries
+                <Layers className="size-3.5 text-primary" /> Platform Breakdown
               </span>
-              <span className="text-xs font-semibold text-muted-foreground">Certified Cohorts</span>
+              <span className="text-xs font-semibold text-muted-foreground">Release Status</span>
             </div>
 
-            <h2 className="mt-2.5 text-base font-bold text-fg-1">Recent Enterprise Deliveries</h2>
-            <p className="mt-1 text-xs text-muted-foreground">Certified client cohort completions</p>
+            <h2 className="mt-2.5 text-base font-bold text-fg-1">Platform-Level Release Cycle</h2>
+            <p className="mt-1 text-xs text-muted-foreground">Curriculum readiness broken down by platform</p>
 
-            <div className="mt-4 divide-y divide-border-subtle">
-              {recentDeliveries.map((deliv) => (
-                <div key={deliv.id} className="py-2.5 first:pt-1 last:pb-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-fg-1">{deliv.student_name}</span>
-                    <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary">
-                      {deliv.company?.split(" ")[0] || "Client"}
-                    </span>
+            <div className="mt-4 space-y-3">
+              {platformStats.map(([platformName, stat]) => {
+                const pubPct = stat.total ? Math.round((stat.published / stat.total) * 100) : 0;
+                return (
+                  <div key={platformName} className="rounded-2xl border border-border-subtle bg-surface/60 p-3">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-fg-1">{platformName}</span>
+                      <span className="font-mono font-semibold text-muted-foreground">
+                        {stat.published}/{stat.total} ready ({pubPct}%)
+                      </span>
+                    </div>
+
+                    <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+                      <div
+                        className="h-full rounded-full bg-primary transition-all duration-700"
+                        style={{ width: `${pubPct}%` }}
+                      />
+                    </div>
+
+                    <div className="mt-2 flex items-center justify-between text-[10.5px] text-muted-foreground">
+                      <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                        {stat.published} Published
+                      </span>
+                      <span>·</span>
+                      <span className="text-amber-600 dark:text-amber-400 font-medium">
+                        {stat.inProgress} Review
+                      </span>
+                      <span>·</span>
+                      <span className="text-sky-600 dark:text-sky-400 font-medium">
+                        {stat.pipeline} Pipeline
+                      </span>
+                    </div>
                   </div>
-                  <div className="mt-0.5 line-clamp-1 text-[11px] text-muted-foreground">
-                    {deliv.course_name}
-                  </div>
-                  <div className="mt-1.5 flex items-center justify-between text-[10.5px]">
-                    <span className="text-fg-3">{deliv.delivery_date} · {deliv.modality}</span>
-                    <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">NPS 10/10</span>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
-          <div className="mt-4 flex items-center gap-2 rounded-2xl border border-gold/30 bg-gold/10 px-3.5 py-2 text-xs text-fg-1">
-            <CheckCircle2 className="size-4 shrink-0 text-emerald-600" />
-            <span className="text-[11.5px]">Audited client satisfaction rating: <strong>9.8 / 10</strong></span>
+          <div className="mt-4 flex items-center justify-between border-t border-border-subtle pt-3 text-xs text-muted-foreground">
+            <span>Enterprise coverage</span>
+            <span className="font-semibold text-fg-1">{platformStats.length} Strategic Platforms</span>
           </div>
         </div>
 
-        {/* Card C: Enterprise Platform Coverage */}
+        {/* Card C: Strategic Technology Domains */}
         <div className="flex flex-col justify-between rounded-3xl border border-border bg-card p-6 shadow-sm transition-all hover:shadow-md">
           <div>
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-fg-3 flex items-center gap-1.5">
                 <Globe2 className="size-3.5 text-primary" /> Architecture Focus
               </span>
-              <span className="text-xs font-semibold text-muted-foreground">Strategic Domains</span>
+              <span className="text-xs font-semibold text-muted-foreground">Core Domains</span>
             </div>
 
-            <h2 className="mt-2.5 text-base font-bold text-fg-1">Core Tech Platforms</h2>
+            <h2 className="mt-2.5 text-base font-bold text-fg-1">Platform Architecture</h2>
             <p className="mt-1 text-xs text-muted-foreground">Specialized curricula tracks across vendors</p>
 
             <div className="mt-4 space-y-2.5">
@@ -275,7 +298,7 @@ export default function HomePage() {
                   </span>
                   <div>
                     <div className="text-xs font-bold text-fg-1">Generative AI & Data</div>
-                    <div className="text-[10.5px] text-muted-foreground">watsonx.ai · LangChain · RAG</div>
+                    <div className="text-[10.5px] text-muted-foreground">watsonx.ai · LangChain · Lakehouse</div>
                   </div>
                 </div>
                 <span className="rounded-md bg-secondary px-2 py-0.5 font-mono text-[10.5px] font-semibold text-primary">

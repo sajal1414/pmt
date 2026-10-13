@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
-import { Plus, Search, Upload, X } from "lucide-react";
+import { Plus, Search, Upload, X, ExternalLink, FileText } from "lucide-react";
 import { SurfaceHeader } from "@/components/shared/surface-header";
 import { DataTable, type DataTableColumn } from "@/components/shared/data-table";
 import { StatusBadge, courseStatusTone, formatEnumLabel } from "@/components/shared/status-badge";
@@ -13,7 +13,7 @@ import type { Course } from "@/lib/types";
 import { CourseFormDialog } from "./course-form-dialog";
 import { BulkImportDialog } from "./bulk-import-dialog";
 
-const STATUS_OPTIONS = ["backlog", "pipeline", "draft", "in_progress", "for_review", "updated_version", "custom", "published"];
+const STATUS_OPTIONS = ["backlog", "pipeline", "draft", "in_progress", "for_review", "updated_version", "custom", "published", "lockheed", "retired"];
 
 const PLATFORM_OPTIONS = [
   "Security",
@@ -37,10 +37,14 @@ const COLUMNS: DataTableColumn<Course>[] = [
     label: "Course Name",
     sortable: true,
     render: (c) => (
-      <div>
-        <span className="font-medium text-fg-1 leading-snug">{c.course_name}</span>
+      <div className="max-w-[340px] min-w-0" title={c.course_name}>
+        <span className="font-medium text-fg-1 leading-normal truncate block">
+          {c.course_name}
+        </span>
         {c.ibm_course_codes && (
-          <span className="block text-[11px] font-mono text-muted-foreground">IBM: {c.ibm_course_codes}</span>
+          <span className="text-[11px] font-mono text-muted-foreground truncate block">
+            IBM: {c.ibm_course_codes}
+          </span>
         )}
       </div>
     ),
@@ -70,6 +74,37 @@ const COLUMNS: DataTableColumn<Course>[] = [
     width: "130px",
     sortable: true,
     render: (c) => <StatusBadge label={formatEnumLabel(c.status)} tone={courseStatusTone(c.status)} />,
+  },
+  {
+    id: "link_to_course_outline",
+    label: "Course Outline",
+    width: "140px",
+    render: (c) => {
+      if (c.link_to_course_outline) {
+        return (
+          <a
+            href={c.link_to_course_outline}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-primary/10 text-primary hover:bg-primary/20 transition-all border border-primary/20 group shadow-2xs"
+            title={`Open outline in SharePoint: ${c.link_to_course_outline}`}
+          >
+            <FileText className="size-3.5 text-primary shrink-0" />
+            <span>Outline</span>
+            <ExternalLink className="size-3 opacity-60 group-hover:opacity-100 transition-opacity" />
+          </a>
+        );
+      }
+      if (c.course_outline_status) {
+        return (
+          <span className="text-[11px] font-medium text-muted-foreground capitalize">
+            {c.course_outline_status.replace(/_/g, " ")}
+          </span>
+        );
+      }
+      return <span className="text-muted-foreground">—</span>;
+    },
   },
   {
     id: "created_at",

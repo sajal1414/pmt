@@ -42,7 +42,7 @@ export function BulkImportDialog({ open, onOpenChange }: { open: boolean; onOpen
         if (data.created > 0) parts.push(`${data.created} courses created`);
         if (data.updated && data.updated > 0) parts.push(`${data.updated} courses updated`);
         if (data.lessons_created && data.lessons_created > 0) parts.push(`${data.lessons_created} lessons added`);
-        const msg = parts.length > 0 ? `Successfully imported: ${parts.join(", ")}!` : "Spreadsheet imported successfully!";
+        const msg = parts.length > 0 ? `Successfully imported: ${parts.join(", ")}!` : "All records are already up to date (no field changes detected).";
         toast.success(msg);
         setResult(null);
         setFile(null);

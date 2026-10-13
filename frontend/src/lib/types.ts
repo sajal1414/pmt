@@ -6,7 +6,9 @@ export type CourseStatus =
   | "for_review"
   | "updated_version"
   | "custom"
-  | "published";
+  | "published"
+  | "lockheed"
+  | "retired";
 
 export type CourseOutlineStatus = "missing" | "not_yet_scoped" | "draft" | "partially_complete" | "validated";
 export type LabLocation = "ITZ" | "nFolks" | "instructor_owned" | "na";

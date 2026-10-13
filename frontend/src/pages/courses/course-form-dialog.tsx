@@ -10,7 +10,7 @@ import { nullifyEmptyStrings } from "@/lib/utils";
 import type { Course } from "@/lib/types";
 import { formatEnumLabel } from "@/components/shared/status-badge";
 
-const STATUS_OPTIONS = ["backlog", "pipeline", "draft", "in_progress", "for_review", "updated_version", "custom", "published"];
+const STATUS_OPTIONS = ["backlog", "pipeline", "draft", "in_progress", "for_review", "updated_version", "custom", "published", "lockheed", "retired"];
 
 const FIELD_CLASS = "text-xs font-medium text-fg-2";
 

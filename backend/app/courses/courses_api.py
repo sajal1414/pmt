@@ -59,7 +59,7 @@ class CourseCreateRequest(BaseModel):
 
 
 class CourseUpdateRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     course_name: str | None = None
     nfolks_course_code: str | None = None
@@ -224,7 +224,7 @@ def import_courses():
     if file is None:
         return respond(FAIL_MESSAGE, "No file uploaded (expected multipart field 'file')"), 400
 
-    workbook = openpyxl.load_workbook(file, read_only=True, data_only=True)
+    workbook = openpyxl.load_workbook(file, data_only=True)
 
     # 1. Identify Courses sheet
     courses_sheet_name = None
@@ -237,11 +237,18 @@ def import_courses():
         courses_sheet_name = workbook.sheetnames[0]
 
     sheet = workbook[courses_sheet_name]
-    rows = sheet.iter_rows(values_only=True)
-    try:
-        headers = next(rows)
-    except StopIteration:
+    if sheet.max_row < 1:
         return respond(FAIL_MESSAGE, "Courses sheet is empty"), 400
+
+    headers = [c.value for c in sheet[1]]
+    if not headers or not any(headers):
+        return respond(FAIL_MESSAGE, "Courses sheet has no headers"), 400
+
+    link_col_idx = None
+    for idx, h in enumerate(headers):
+        if h and str(h).strip().lower() in ("link to course outline", "link_to_course_outline", "outline link"):
+            link_col_idx = idx
+            break
 
     created, updated, skipped, errors = 0, 0, 0, []
     lessons_created, lesson_errors = 0, []
@@ -250,49 +257,112 @@ def import_courses():
         existing_codes = {code for (code,) in dao.session.query(Course.nfolks_course_code).all()}
         seen_codes = set()
         course_code_to_id = {}
+        course_name_to_id = {}
 
-        # Populate course_code_to_id for any other existing courses in DB
-        all_courses = dao.session.query(Course.id, Course.nfolks_course_code).all()
-        for c_id, c_code in all_courses:
+        # Populate lookups for existing courses in DB
+        all_courses = dao.session.query(Course.id, Course.nfolks_course_code, Course.course_name).all()
+        for c_id, c_code, c_name in all_courses:
             if c_code:
-                course_code_to_id[str(c_code).strip()] = c_id
+                course_code_to_id[str(c_code).strip().lower()] = c_id
+            if c_name:
+                course_name_to_id[str(c_name).strip().lower()] = c_id
 
         # Detect single-sheet mode if sheet headers contain lesson attributes
         clean_headers_set = {str(h).strip().lower() for h in headers if h}
         single_sheet_mode = bool(clean_headers_set & {"lesson title", "title", "class name", "video link", "video url", "attachment url"})
 
-        for row_number, raw_row in enumerate(rows, start=2):
-            if raw_row is None or all(c is None or str(c).strip() == "" for c in raw_row):
+        for row_number in range(2, sheet.max_row + 1):
+            raw_cells = [sheet.cell(row=row_number, column=c) for c in range(1, len(headers) + 1)]
+            if not any(c.value is not None and str(c.value).strip() != "" for c in raw_cells):
                 continue
-            row = dict(zip(headers, raw_row))
+
+            row = {}
+            for idx, (h, cell) in enumerate(zip(headers, raw_cells)):
+                if not h:
+                    continue
+                val = cell.value
+                if idx == link_col_idx and cell.hyperlink and cell.hyperlink.target:
+                    val = cell.hyperlink.target
+                row[h] = val
+
             fields = map_row(row)
             code = fields.get("nfolks_course_code")
-            if not code and fields.get("course_name"):
-                code = f"ATLAS-BK-{row_number:03d}"
-                fields["nfolks_course_code"] = code
+            name = fields.get("course_name")
+            row_id = fields.get("id")
 
             target_course_id = None
-            if code:
-                code_str = str(code).strip()
-                if code_str in course_code_to_id:
-                    target_course_id = course_code_to_id[code_str]
-                    existing_course = dao.get_raw_by_id(target_course_id)
-                    if existing_course:
-                        try:
-                            body = CourseUpdateRequest(**fields)
-                            dao.update(existing_course, body.model_dump(exclude_unset=True))
-                            updated += 1
-                        except Exception:
-                            pass
-                else:
+            if row_id and dao.get_raw_by_id(row_id):
+                target_course_id = row_id
+            elif code and str(code).strip().lower() in course_code_to_id:
+                target_course_id = course_code_to_id[str(code).strip().lower()]
+            elif not code and name and str(name).strip().lower() in course_name_to_id:
+                target_course_id = course_name_to_id[str(name).strip().lower()]
+
+            if target_course_id:
+                existing_course = dao.get_raw_by_id(target_course_id)
+                if existing_course:
                     try:
-                        body = CourseCreateRequest(**fields)
+                        update_payload = dict(fields)
+                        update_payload.pop("id", None)
+                        # Do not mutate the unique course code of an existing course during bulk update
+                        update_payload.pop("nfolks_course_code", None)
+
+                        body = CourseUpdateRequest(**update_payload)
+                        clean_update_data = body.model_dump(exclude_unset=True)
+
+                        # Detect actual field modifications: only update if fields changed!
+                        changed_fields = {}
+                        for k, new_val in clean_update_data.items():
+                            curr_val = getattr(existing_course, k, None)
+
+                            # Normalize Enum to string value for comparison
+                            curr_cmp = curr_val.value if hasattr(curr_val, "value") else curr_val
+                            new_cmp = new_val.value if hasattr(new_val, "value") else new_val
+
+                            if isinstance(curr_cmp, (int, float, Decimal)) and isinstance(new_cmp, (int, float, Decimal)):
+                                try:
+                                    if Decimal(str(curr_cmp)) == Decimal(str(new_cmp)):
+                                        continue
+                                except Exception:
+                                    pass
+                            elif isinstance(curr_cmp, str) and isinstance(new_cmp, str):
+                                if curr_cmp.strip() == new_cmp.strip():
+                                    continue
+                            elif curr_cmp == new_cmp:
+                                continue
+
+                            changed_fields[k] = new_val
+
+                        # Only update and count if changes actually exist
+                        if changed_fields:
+                            dao.update(existing_course, changed_fields)
+                            updated += 1
+                    except Exception as e:
+                        errors.append({"row": row_number, "reason": f"Update failed: {str(e)}"})
+                        skipped += 1
+            else:
+                if not code and name:
+                    code = f"ATLAS-BK-{row_number:03d}"
+                    fields["nfolks_course_code"] = code
+
+                if code:
+                    try:
+                        create_payload = dict(fields)
+                        create_payload.pop("id", None)
+                        body = CourseCreateRequest(**create_payload)
                         new_course = dao.create(body.model_dump(), g.current_user)
-                        course_code_to_id[code_str] = new_course.id
+                        code_key = str(new_course.nfolks_course_code).strip().lower()
+                        course_code_to_id[code_key] = new_course.id
+                        if new_course.course_name:
+                            course_name_to_id[str(new_course.course_name).strip().lower()] = new_course.id
                         target_course_id = new_course.id
-                        seen_codes.add(code_str)
+                        seen_codes.add(code_key)
                         created += 1
                     except ValidationError as e:
+                        errors.append({"row": row_number, "reason": str(e)})
+                        skipped += 1
+                        continue
+                    except Exception as e:
                         errors.append({"row": row_number, "reason": str(e)})
                         skipped += 1
                         continue
@@ -362,7 +432,8 @@ def import_courses():
                         lesson_errors.append({"row": l_row_num, "reason": "Missing course code for lesson"})
                         continue
 
-                    target_course_id = course_code_to_id.get(str(code).strip())
+                    code_key = str(code).strip().lower()
+                    target_course_id = course_code_to_id.get(code_key) or course_name_to_id.get(code_key)
                     if not target_course_id:
                         lesson_errors.append({"row": l_row_num, "reason": f"Course code not found: {code}"})
                         continue

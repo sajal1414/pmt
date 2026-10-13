@@ -46,13 +46,42 @@ _STATUS_MAP = {
     "pipeline": "pipeline",
     "draft": "draft",
     "in-progress": "in_progress",
+    "in_progress": "in_progress",
+    "in progress": "in_progress",
     "for review": "for_review",
+    "for_review": "for_review",
+    "review": "for_review",
     "updated version": "updated_version",
+    "updated_version": "updated_version",
     "custom": "custom",
     "published": "published",
+    "available": "published",
+    "active": "published",
+    "live": "published",
+    "lockheed": "lockheed",
+    "retired": "retired",
+    "retire": "retired",
+    "archived": "retired",
+    "archive": "retired",
+    "inactive": "retired",
 }
 
-_IP_OWNER_MAP = {"nfolks": "nFolks", "sub-k": "SubK", "subk": "SubK"}
+_SKILL_LEVEL_MAP = {
+    "foundation": "foundational",
+    "foundational": "foundational",
+    "beginner": "foundational",
+    "introductory": "foundational",
+    "intermediate": "intermediate",
+    "advanced": "advanced",
+    "expert": "advanced",
+}
+
+_IP_OWNER_MAP = {
+    "nfolks": "nFolks",
+    "sub-k": "SubK",
+    "subk": "SubK",
+    "sub_k": "SubK",
+}
 
 _LAB_LOCATION_MAP = {
     "itz": "ITZ",
@@ -61,23 +90,35 @@ _LAB_LOCATION_MAP = {
     "nfolks lab": "nFolks",
     "instructor owned": "instructor_owned",
     "instructor_owned": "instructor_owned",
+    "instructor": "instructor_owned",
     "n/a": "na",
     "na": "na",
+    "none": "na",
 }
 
 _OUTLINE_STATUS_MAP = {
     "missing": "missing",
+    "no outline": "missing",
+    "no_outline": "missing",
+    "none": "missing",
     "not yet scoped": "not_yet_scoped",
     "not_yet_scoped": "not_yet_scoped",
+    "unscoped": "not_yet_scoped",
     "draft": "draft",
+    "in progress": "draft",
+    "in-progress": "draft",
     "partially complete": "partially_complete",
     "partially_complete": "partially_complete",
+    "partial": "partially_complete",
     "validated": "validated",
     "completed": "validated",
     "complete": "validated",
+    "ready": "validated",
 }
 
 COLUMN_MAP_NORMALIZED = {
+    "id": "id",
+    "course id": "id",
     "vendor": "vendor",
     "platform": "platform",
     "portfolio": "portfolio",
@@ -138,11 +179,11 @@ COLUMN_MAP_NORMALIZED = {
 }
 
 
-def _normalize_enum(value, lookup: dict):
+def _normalize_enum(value, lookup: dict, default=None):
     if value is None:
-        return None
+        return default
     key = str(value).strip().lower()
-    return lookup.get(key, str(value).strip())
+    return lookup.get(key, default)
 
 
 def map_row(row: dict) -> dict:
@@ -158,17 +199,19 @@ def map_row(row: dict) -> dict:
         if field is None:
             continue
         if field == "status":
-            value = _normalize_enum(value, _STATUS_MAP)
+            value = _normalize_enum(value, _STATUS_MAP, default="backlog")
         elif field == "ip_owner":
-            value = _normalize_enum(value, _IP_OWNER_MAP)
+            value = _normalize_enum(value, _IP_OWNER_MAP, default=None)
         elif field == "lab_location":
-            value = _normalize_enum(value, _LAB_LOCATION_MAP)
+            value = _normalize_enum(value, _LAB_LOCATION_MAP, default=None)
         elif field == "course_outline_status":
-            value = _normalize_enum(value, _OUTLINE_STATUS_MAP)
+            value = _normalize_enum(value, _OUTLINE_STATUS_MAP, default=None)
         elif field == "skill_level":
-            value = str(value).strip().lower()
+            value = _normalize_enum(value, _SKILL_LEVEL_MAP, default=None)
         elif field == "on_ibm_pmt":
             value = str(value).strip()
+        elif isinstance(value, str):
+            value = value.replace("\xa0", " ").replace("\ufffd\t", "• ").replace("\ufffd", "-").strip()
         elif field in ("duration_days", "num_hours", "instructor_daily_rate", "materials_cost", "lab_cost"):
             if isinstance(value, str) and value.strip().startswith("="):
                 value = None
@@ -184,12 +227,17 @@ def map_row(row: dict) -> dict:
             elif isinstance(value, str):
                 try:
                     import datetime
-                    value = datetime.datetime.fromisoformat(value.strip().split("T")[0]).date()
+                    value = datetime.date.fromisoformat(value.strip().split("T")[0])
                 except Exception:
-                    value = None
+                    try:
+                        from dateutil import parser
+                        value = parser.parse(value.strip().split("T")[0]).date()
+                    except Exception:
+                        value = None
 
         if value is not None:
             fields[field] = value
+
 
     if "num_hours" not in fields and "duration_days" in fields and fields["duration_days"]:
         try:

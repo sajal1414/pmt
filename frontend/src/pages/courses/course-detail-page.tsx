@@ -9,13 +9,14 @@ import {
   FileText,
   BookOpen,
   Save,
-  Download,
   Layers,
   Calendar,
   DollarSign,
   Award,
+  ExternalLink,
+  Copy,
+  ArrowLeft,
 } from "lucide-react";
-import { SurfaceHeader } from "@/components/shared/surface-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -27,7 +28,7 @@ import { ContentViewerDialog } from "@/components/shared/content-viewer-dialog";
 import { StatusBadge, courseStatusTone, formatEnumLabel } from "@/components/shared/status-badge";
 import { useCourse, useLessons } from "@/hooks/use-courses";
 import { useCreateLesson, useDeleteCourse, useDeleteLesson, useUpdateCourse } from "@/hooks/use-course-mutations";
-import { api, apiGet, getErrorMessage } from "@/lib/api";
+import { apiGet, getErrorMessage } from "@/lib/api";
 import { nullifyEmptyStrings } from "@/lib/utils";
 import type { Lesson } from "@/lib/types";
 import { LessonAttachmentDialog } from "./lesson-attachment-dialog";
@@ -42,6 +43,8 @@ const STATUS_OPTIONS = [
   "updated_version",
   "custom",
   "published",
+  "lockheed",
+  "retired",
 ];
 
 const OUTLINE_STATUS_OPTIONS = [
@@ -171,29 +174,6 @@ export default function CourseDetailPage() {
     }
   };
 
-  const handleDownloadOutline = async () => {
-    try {
-      toast.info("Generating course outline PDF...");
-      const response = await api.get(`/v1/courses/${courseId}/outline/pdf`, {
-        responseType: "blob",
-      });
-      const blob = new Blob([response.data], { type: "application/pdf" });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      const code = course?.nfolks_course_code || `COURSE-${courseId}`;
-      const safeCode = code.replace(/[^a-zA-Z0-9_-]/g, "_");
-      a.download = `${safeCode}_Course_Outline.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-      toast.success("Course outline PDF downloaded successfully!");
-    } catch (error) {
-      toast.error(getErrorMessage(error) || "Failed to download course outline PDF");
-    }
-  };
-
   const handleAddLesson = async () => {
     if (!newLessonTitle.trim()) return;
     try {
@@ -216,62 +196,71 @@ export default function CourseDetailPage() {
 
   return (
     <div className="relative flex flex-col gap-4 pb-12">
-      {/* ── STICKY SURFACE HEADER WITH TOP RIGHT CONTROLS ── */}
-      <div className="sticky -top-4 z-30 -mt-4 -mx-4 px-4 py-2.5 bg-background/95 backdrop-blur-md border-b border-border shadow-xs">
-        <SurfaceHeader
-          eyebrow={course.nfolks_course_code}
-          title={course.course_name}
-          meta={
-            <div className="flex items-center gap-2">
-              <StatusBadge label={formatEnumLabel(course.status)} tone={courseStatusTone(course.status)} />
-              {course.platform && (
-                <span className="rounded-md bg-secondary px-2 py-0.5 text-xs font-semibold text-fg-2">
-                  {course.platform}
-                </span>
-              )}
-              {course.product && (
-                <span className="rounded-md bg-accent/70 px-2 py-0.5 text-xs font-medium text-fg-2">
-                  {course.product}
-                </span>
-              )}
-            </div>
-          }
-          actions={
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleDownloadOutline}
-                className="h-8 text-xs font-semibold gap-1.5 border-border hover:bg-secondary cursor-pointer"
-                title="Download Course Outline PDF"
-              >
-                <Download className="size-3.5" />
-                <span>Download Outline</span>
-              </Button>
+      {/* ── STICKY TOP HEADER WITH FIXED TOP RIGHT CONTROLS ── */}
+      <div className="sticky -top-4 z-30 -mt-4 -mx-4 px-4 py-2.5 bg-background/95 backdrop-blur-md border-b border-border shadow-xs flex items-center justify-between gap-3">
+        {/* Left: Back button + Code, Course Title, and Badges */}
+        <div className="min-w-0 flex-1 flex items-center gap-2.5 overflow-hidden">
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => navigate("/courses")}
+            className="h-8 px-2.5 gap-1.5 text-xs font-semibold text-fg-2 hover:text-fg-1 hover:bg-secondary cursor-pointer shrink-0 border border-border/70 shadow-2xs"
+            title="Back to courses list"
+          >
+            <ArrowLeft className="size-3.5" />
+            <span>Courses</span>
+          </Button>
 
-              <Button
-                size="sm"
-                onClick={handleSave}
-                disabled={updateCourse.isPending}
-                className="h-8 text-xs font-semibold gap-1.5 shadow-xs cursor-pointer"
-                title="Save changes to course"
-              >
-                <Save className="size-3.5" />
-                <span>Save changes</span>
-              </Button>
+          <div className="h-4 w-px bg-border shrink-0" />
 
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setConfirmDelete(true)}
-                className="h-8 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive cursor-pointer"
-                title="Delete course"
-              >
-                <Trash2 className="size-4" />
-              </Button>
-            </div>
-          }
-        />
+          <span className="text-[11px] font-bold text-primary uppercase tracking-wider shrink-0 font-mono">
+            {course.nfolks_course_code}
+          </span>
+          <h1
+            className="text-base font-bold text-fg-1 truncate tracking-tight min-w-0"
+            title={course.course_name}
+          >
+            {course.course_name}
+          </h1>
+          <div className="hidden sm:flex items-center gap-2 shrink-0">
+            <StatusBadge label={formatEnumLabel(course.status)} tone={courseStatusTone(course.status)} />
+            {course.platform && (
+              <span className="rounded-md bg-secondary px-2 py-0.5 text-xs font-semibold text-fg-2">
+                {course.platform}
+              </span>
+            )}
+            {course.product && (
+              <span className="rounded-md bg-accent/70 px-2 py-0.5 text-xs font-medium text-fg-2">
+                {course.product}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Right: Permanently fixed at extreme top right corner */}
+        <div className="shrink-0 flex items-center gap-2 ml-auto">
+          <Button
+            size="sm"
+            onClick={handleSave}
+            disabled={updateCourse.isPending}
+            className="h-8 text-xs font-semibold gap-1.5 shadow-xs cursor-pointer shrink-0"
+            title="Save changes to course"
+          >
+            <Save className="size-3.5" />
+            <span>Save changes</span>
+          </Button>
+
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setConfirmDelete(true)}
+            className="h-8 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive cursor-pointer shrink-0"
+            title="Delete course"
+          >
+            <Trash2 className="size-4" />
+          </Button>
+        </div>
       </div>
 
       <TabStrip
@@ -390,16 +379,49 @@ export default function CourseDetailPage() {
                   </div>
 
                   <div className="col-span-1 sm:col-span-4 flex flex-col gap-1.5">
-                    <label className={FIELD_CLASS}>Link to Course Outline</label>
-                    <Input
-                      placeholder="https://... or shared document link"
-                      value={form.link_to_course_outline ?? ""}
-                      onChange={set("link_to_course_outline")}
-                    />
+                    <div className="flex items-center justify-between">
+                      <label className={FIELD_CLASS}>Link to Course Outline</label>
+                      {form.link_to_course_outline && (
+                        <a
+                          href={form.link_to_course_outline}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+                        >
+                          <span>Open</span>
+                          <ExternalLink className="size-3" />
+                        </a>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="https://... or shared document link"
+                        value={form.link_to_course_outline ?? ""}
+                        onChange={set("link_to_course_outline")}
+                        className="flex-1 font-mono text-xs"
+                      />
+                      {form.link_to_course_outline && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            navigator.clipboard.writeText(form.link_to_course_outline ?? "");
+                            toast.success("Course outline link copied to clipboard");
+                          }}
+                          className="h-9 px-3 text-xs font-semibold gap-1.5 shrink-0 border-border hover:bg-secondary cursor-pointer"
+                          title="Copy outline link to clipboard"
+                        >
+                          <Copy className="size-3.5" />
+                          <span>Copy</span>
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </div>
               </CardContent>
             </Card>
+
 
             {/* ── SECTION 3: CURRICULUM, AUDIENCE & LAB SETUP (Cols 21, 23-28) ── */}
             <Card>
@@ -432,14 +454,14 @@ export default function CourseDetailPage() {
                     <Input type="number" placeholder="e.g. 15" value={form.max_students ?? ""} onChange={set("max_students")} />
                   </div>
 
-                  <div className="flex flex-col gap-1.5">
+                  <div className="col-span-1 sm:col-span-3 flex flex-col gap-1.5">
                     <label className={FIELD_CLASS}>Pre Reqs</label>
-                    <Input placeholder="e.g. Linux fundamentals, Python basics" value={form.pre_reqs ?? ""} onChange={set("pre_reqs")} />
+                    <Textarea rows={3} placeholder="e.g. Linux fundamentals, Python basics" value={form.pre_reqs ?? ""} onChange={set("pre_reqs")} />
                   </div>
 
                   <div className="col-span-1 sm:col-span-3 flex flex-col gap-1.5">
                     <label className={FIELD_CLASS}>Persona</label>
-                    <Input placeholder="e.g. Solutions Architects, SecOps Engineers, Data Analysts" value={form.persona_audience_type ?? ""} onChange={set("persona_audience_type")} />
+                    <Textarea rows={3} placeholder="e.g. Solutions Architects, SecOps Engineers, Data Analysts" value={form.persona_audience_type ?? ""} onChange={set("persona_audience_type")} />
                   </div>
 
                   <div className="col-span-1 sm:col-span-3 flex flex-col gap-1.5">

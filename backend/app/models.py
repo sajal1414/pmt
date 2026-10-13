@@ -36,6 +36,8 @@ class CourseStatus(str, enum.Enum):
     updated_version = "updated_version"
     custom = "custom"
     published = "published"
+    lockheed = "lockheed"
+    retired = "retired"
 
 
 class CourseOutlineStatus(str, enum.Enum):

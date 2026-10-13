@@ -30,6 +30,8 @@ const COURSE_STATUS_TONE: Record<string, Tone> = {
   pipeline: "gold",
   backlog: "neutral",
   custom: "gold",
+  lockheed: "info",
+  retired: "neutral",
 };
 
 export function courseStatusTone(status: string): Tone {

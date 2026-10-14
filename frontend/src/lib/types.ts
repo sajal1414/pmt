@@ -1,4 +1,6 @@
 export type CourseStatus =
+  | "available"
+  | "in_development"
   | "backlog"
   | "pipeline"
   | "draft"
@@ -58,6 +60,9 @@ export interface Course {
   record_source: string | null;
   created_at: string;
   updated_at: string;
+  instructors?: Instructor[];
+  instructor_ids?: number[];
+  instructor?: string;
 }
 
 export interface Lesson {

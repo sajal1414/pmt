@@ -5,6 +5,7 @@ from decimal import Decimal
 import openpyxl
 from flask import Blueprint, Response, g, request
 from pydantic import BaseModel, ConfigDict, ValidationError
+from sqlalchemy.orm import joinedload
 
 from app.auth.auth_utils import require_role, verify_jwt_token
 from app.config import FAIL_MESSAGE, SUCCESS_MESSAGE, respond
@@ -12,7 +13,7 @@ from app.courses.course_pdf import generate_course_outline_pdf
 from app.courses.courses_dao import CourseDAO
 from app.courses.courses_import import map_lesson_row, map_row
 from app.db import to_dict
-from app.models import Course, CourseOutlineStatus, CourseStatus, IPOwner, LabLocation, Lesson, SkillLevel
+from app.models import Course, CourseOutlineStatus, CourseStatus, IPOwner, Instructor, LabLocation, Lesson, SkillLevel
 from app.s3_utils import create_presigned_playback_url, create_presigned_upload_post
 
 courses_api = Blueprint("courses_api", __name__, url_prefix="/v1/courses")
@@ -56,6 +57,7 @@ class CourseCreateRequest(BaseModel):
     certification: str | None = None
     notes: str | None = None
     record_source: str | None = None
+    instructor_ids: list[int] | None = None
 
 
 class CourseUpdateRequest(BaseModel):
@@ -98,6 +100,16 @@ class CourseUpdateRequest(BaseModel):
     certification: str | None = None
     notes: str | None = None
     record_source: str | None = None
+    instructor_ids: list[int] | None = None
+
+
+def course_to_dict(course: Course) -> dict:
+    data = to_dict(course)
+    instructors = getattr(course, "instructors", None) or []
+    data["instructors"] = [to_dict(i) for i in instructors]
+    data["instructor_ids"] = [i.id for i in instructors]
+    data["instructor"] = ", ".join(i.name for i in instructors if i.name)
+    return data
 
 
 @courses_api.route("", methods=["GET"])
@@ -105,7 +117,7 @@ class CourseUpdateRequest(BaseModel):
 def list_courses():
     with CourseDAO() as dao:
         courses = dao.get_all(request.args, g.current_user)
-        return respond(SUCCESS_MESSAGE, "OK", [to_dict(c) for c in courses])
+        return respond(SUCCESS_MESSAGE, "OK", [course_to_dict(c) for c in courses])
 
 
 @courses_api.route("/<int:course_id>", methods=["GET"])
@@ -115,7 +127,7 @@ def get_course(course_id):
         course = dao.get_by_id(course_id, g.current_user)
         if course is None:
             return respond(FAIL_MESSAGE, "Course not found"), 404
-        return respond(SUCCESS_MESSAGE, "OK", to_dict(course))
+        return respond(SUCCESS_MESSAGE, "OK", course_to_dict(course))
 
 
 @courses_api.route("", methods=["POST"])
@@ -129,7 +141,7 @@ def create_course():
 
     with CourseDAO() as dao:
         course = dao.create(body.model_dump(), g.current_user)
-        return respond(SUCCESS_MESSAGE, "Course created", to_dict(course)), 201
+        return respond(SUCCESS_MESSAGE, "Course created", course_to_dict(course)), 201
 
 
 @courses_api.route("/<int:course_id>", methods=["PUT"])
@@ -151,7 +163,7 @@ def update_course(course_id):
         if g.current_user["role"] == "instructor":
             updates.pop("course_author_email", None)
         course = dao.update(course, updates)
-        return respond(SUCCESS_MESSAGE, "Course updated", to_dict(course))
+        return respond(SUCCESS_MESSAGE, "Course updated", course_to_dict(course))
 
 
 @courses_api.route("/<int:course_id>", methods=["DELETE"])
@@ -254,18 +266,33 @@ def import_courses():
     lessons_created, lesson_errors = 0, []
 
     with CourseDAO() as dao:
-        existing_codes = {code for (code,) in dao.session.query(Course.nfolks_course_code).all()}
         seen_codes = set()
         course_code_to_id = {}
         course_name_to_id = {}
 
-        # Populate lookups for existing courses in DB
-        all_courses = dao.session.query(Course.id, Course.nfolks_course_code, Course.course_name).all()
-        for c_id, c_code, c_name in all_courses:
-            if c_code:
-                course_code_to_id[str(c_code).strip().lower()] = c_id
-            if c_name:
-                course_name_to_id[str(c_name).strip().lower()] = c_id
+        # Populate lookups for existing courses in DB in a single fast query with instructors
+        all_courses = dao.session.query(Course).options(joinedload(Course.instructors)).all()
+        course_by_id = {c.id: c for c in all_courses}
+        existing_codes = {c.nfolks_course_code for c in all_courses if c.nfolks_course_code}
+        for c in all_courses:
+            if c.nfolks_course_code:
+                course_code_to_id[str(c.nfolks_course_code).strip().lower()] = c.id
+            if c.course_name:
+                course_name_to_id[str(c.course_name).strip().lower()] = c.id
+
+        # Build instructor lookup by name and email
+        all_instructors = dao.session.query(Instructor).all()
+        instructor_by_id = {inst.id: inst for inst in all_instructors}
+        instructor_by_key = {}
+        for inst in all_instructors:
+            if inst.name:
+                instructor_by_key[inst.name.strip().lower()] = inst.id
+            if inst.email:
+                instructor_by_key[inst.email.strip().lower()] = inst.id
+
+        # Preload lessons for zero-latency in-memory deduplication
+        all_lessons = dao.session.query(Lesson).all()
+        lesson_by_key = {(l.course_id, str(l.title).strip().lower()): l for l in all_lessons if l.title}
 
         # Detect single-sheet mode if sheet headers contain lesson attributes
         clean_headers_set = {str(h).strip().lower() for h in headers if h}
@@ -286,12 +313,35 @@ def import_courses():
                 row[h] = val
 
             fields = map_row(row)
+            raw_instructor = fields.pop("instructor", None)
+            resolved_instructor_ids = []
+            if raw_instructor:
+                parts = [p.strip() for p in str(raw_instructor).split(",") if p.strip()]
+                for p in parts:
+                    match_id = instructor_by_key.get(p.lower())
+                    if not match_id:
+                        for key, i_id in instructor_by_key.items():
+                            if p.lower() in key or key in p.lower():
+                                match_id = i_id
+                                break
+                    if match_id and match_id not in resolved_instructor_ids:
+                        resolved_instructor_ids.append(match_id)
+
+            author_email = fields.get("course_author_email")
+            if author_email:
+                match_id = instructor_by_key.get(str(author_email).strip().lower())
+                if match_id and match_id not in resolved_instructor_ids:
+                    resolved_instructor_ids.append(match_id)
+
+            if resolved_instructor_ids:
+                fields["instructor_ids"] = resolved_instructor_ids
+
             code = fields.get("nfolks_course_code")
             name = fields.get("course_name")
             row_id = fields.get("id")
 
             target_course_id = None
-            if row_id and dao.get_raw_by_id(row_id):
+            if row_id and row_id in course_by_id:
                 target_course_id = row_id
             elif code and str(code).strip().lower() in course_code_to_id:
                 target_course_id = course_code_to_id[str(code).strip().lower()]
@@ -299,7 +349,7 @@ def import_courses():
                 target_course_id = course_name_to_id[str(name).strip().lower()]
 
             if target_course_id:
-                existing_course = dao.get_raw_by_id(target_course_id)
+                existing_course = course_by_id.get(target_course_id)
                 if existing_course:
                     try:
                         update_payload = dict(fields)
@@ -313,6 +363,11 @@ def import_courses():
                         # Detect actual field modifications: only update if fields changed!
                         changed_fields = {}
                         for k, new_val in clean_update_data.items():
+                            if k == "instructor_ids":
+                                curr_inst_ids = sorted([i.id for i in existing_course.instructors])
+                                if sorted(new_val) != curr_inst_ids:
+                                    changed_fields["instructor_ids"] = new_val
+                                continue
                             curr_val = getattr(existing_course, k, None)
 
                             # Normalize Enum to string value for comparison
@@ -335,7 +390,11 @@ def import_courses():
 
                         # Only update and count if changes actually exist
                         if changed_fields:
-                            dao.update(existing_course, changed_fields)
+                            if "instructor_ids" in changed_fields:
+                                inst_ids = changed_fields.pop("instructor_ids")
+                                existing_course.instructors = [instructor_by_id[i_id] for i_id in inst_ids if i_id in instructor_by_id]
+                            for k, v in changed_fields.items():
+                                setattr(existing_course, k, v)
                             updated += 1
                     except Exception as e:
                         errors.append({"row": row_number, "reason": f"Update failed: {str(e)}"})
@@ -353,6 +412,7 @@ def import_courses():
                         new_course = dao.create(body.model_dump(), g.current_user)
                         code_key = str(new_course.nfolks_course_code).strip().lower()
                         course_code_to_id[code_key] = new_course.id
+                        course_by_id[new_course.id] = new_course
                         if new_course.course_name:
                             course_name_to_id[str(new_course.course_name).strip().lower()] = new_course.id
                         target_course_id = new_course.id
@@ -379,11 +439,8 @@ def import_courses():
                     elif not c_type:
                         c_type = "article"
 
-                    existing_lesson = (
-                        dao.session.query(Lesson)
-                        .filter(Lesson.course_id == target_course_id, Lesson.title.ilike(title.strip()))
-                        .first()
-                    )
+                    l_key = (target_course_id, title.strip().lower())
+                    existing_lesson = lesson_by_key.get(l_key)
                     if existing_lesson:
                         if l_fields.get("description"):
                             existing_lesson.description = l_fields.get("description")
@@ -403,6 +460,7 @@ def import_courses():
                             attachment_content_type=c_type,
                         )
                         dao.session.add(lesson)
+                        lesson_by_key[l_key] = lesson
                         lessons_created += 1
 
         # 2. Check for separate Lessons / Classes sheet (if present and different from courses sheet)
@@ -447,14 +505,8 @@ def import_courses():
                         c_type = "article"
 
                     # Deduplicate: check if a lesson with this title already exists for this course
-                    existing_lesson = (
-                        dao.session.query(Lesson)
-                        .filter(
-                            Lesson.course_id == target_course_id,
-                            Lesson.title.ilike(title.strip()),
-                        )
-                        .first()
-                    )
+                    l_key = (target_course_id, title.strip().lower())
+                    existing_lesson = lesson_by_key.get(l_key)
                     if existing_lesson:
                         if l_fields.get("description"):
                             existing_lesson.description = l_fields.get("description")
@@ -475,6 +527,7 @@ def import_courses():
                         attachment_content_type=c_type,
                     )
                     dao.session.add(lesson)
+                    lesson_by_key[l_key] = lesson
                     lessons_created += 1
 
         dao.session.commit()

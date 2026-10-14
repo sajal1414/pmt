@@ -11,6 +11,7 @@ from sqlalchemy import (
     Integer,
     Numeric,
     String,
+    Table,
     Text,
 )
 from sqlalchemy.orm import declarative_base, relationship
@@ -28,6 +29,8 @@ class UserRole(str, enum.Enum):
 
 
 class CourseStatus(str, enum.Enum):
+    available = "available"
+    in_development = "in_development"
     backlog = "backlog"
     pipeline = "pipeline"
     draft = "draft"
@@ -155,6 +158,16 @@ class Course(Base):
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False)
 
     lessons = relationship("Lesson", cascade="all, delete-orphan", back_populates="course")
+    instructors = relationship("Instructor", secondary="course_instructors", backref="courses")
+
+
+course_instructors = Table(
+    "course_instructors",
+    Base.metadata,
+    Column("course_id", Integer, ForeignKey("courses.id", ondelete="CASCADE"), primary_key=True, index=True),
+    Column("instructor_id", Integer, ForeignKey("instructors.id", ondelete="CASCADE"), primary_key=True, index=True),
+    Column("created_at", DateTime(timezone=True), default=_utcnow, nullable=False),
+)
 
 
 class Lesson(Base):

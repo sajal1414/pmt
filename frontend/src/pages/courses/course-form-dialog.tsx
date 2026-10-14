@@ -10,7 +10,20 @@ import { nullifyEmptyStrings } from "@/lib/utils";
 import type { Course } from "@/lib/types";
 import { formatEnumLabel } from "@/components/shared/status-badge";
 
-const STATUS_OPTIONS = ["backlog", "pipeline", "draft", "in_progress", "for_review", "updated_version", "custom", "published", "lockheed", "retired"];
+const STATUS_OPTIONS = [
+  "available",
+  "in_development",
+  "backlog",
+  "pipeline",
+  "draft",
+  "in_progress",
+  "for_review",
+  "updated_version",
+  "custom",
+  "published",
+  "lockheed",
+  "retired",
+];
 
 const FIELD_CLASS = "text-xs font-medium text-fg-2";
 
@@ -31,7 +44,7 @@ export function CourseFormDialog({
     platform: "",
     portfolio: "",
     product: "",
-    status: "backlog",
+    status: "available",
     modality: "",
     course_author_email: "",
     course_description: "",

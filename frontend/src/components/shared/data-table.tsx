@@ -7,6 +7,7 @@ export interface DataTableColumn<T> {
   label: string;
   sortable?: boolean;
   width?: string;
+  className?: string;
   align?: "left" | "right" | "center";
   render: (row: T) => ReactNode;
 }
@@ -30,6 +31,7 @@ export function DataTable<T>({
   isLoading = false,
   emptyMessage = "No results.",
   onRowClick,
+  minWidth,
 }: {
   columns: DataTableColumn<T>[];
   rows: T[];
@@ -44,11 +46,15 @@ export function DataTable<T>({
   isLoading?: boolean;
   emptyMessage?: string;
   onRowClick?: (row: T) => void;
+  minWidth?: string;
 }) {
   return (
     <div className="flex flex-1 flex-col overflow-hidden rounded-lg border border-border bg-surface">
       <div className="flex-1 overflow-auto">
-        <table className="w-full border-collapse text-xs">
+        <table
+          className="w-full border-collapse text-xs"
+          style={minWidth ? { minWidth } : undefined}
+        >
           <colgroup>
             {columns.map((col) => (
               <col key={col.id} style={col.width ? { width: col.width } : undefined} />
@@ -61,6 +67,7 @@ export function DataTable<T>({
                   key={col.id}
                   className={cn(
                     "border-b border-border-subtle px-2.5 py-1.5 text-[10.5px] font-bold uppercase tracking-[0.04em] whitespace-nowrap text-fg-3",
+                    col.className,
                     col.align === "right" && "text-right",
                     col.align === "center" && "text-center",
                   )}
@@ -114,6 +121,7 @@ export function DataTable<T>({
                       key={col.id}
                       className={cn(
                         "px-2.5 py-1.5 align-middle text-fg-1",
+                        col.className,
                         col.align === "right" && "text-right",
                         col.align === "center" && "text-center",
                       )}

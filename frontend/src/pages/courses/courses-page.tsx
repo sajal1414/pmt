@@ -13,7 +13,20 @@ import type { Course } from "@/lib/types";
 import { CourseFormDialog } from "./course-form-dialog";
 import { BulkImportDialog } from "./bulk-import-dialog";
 
-const STATUS_OPTIONS = ["backlog", "pipeline", "draft", "in_progress", "for_review", "updated_version", "custom", "published", "lockheed", "retired"];
+const STATUS_OPTIONS = [
+  "available",
+  "in_development",
+  "backlog",
+  "pipeline",
+  "draft",
+  "in_progress",
+  "for_review",
+  "updated_version",
+  "custom",
+  "published",
+  "lockheed",
+  "retired",
+];
 
 const PLATFORM_OPTIONS = [
   "Security",
@@ -29,8 +42,13 @@ const COLUMNS: DataTableColumn<Course>[] = [
     id: "nfolks_course_code",
     label: "Code",
     sortable: true,
-    width: "125px",
-    render: (c) => <span className="font-mono text-xs font-semibold text-primary">{c.nfolks_course_code}</span>,
+    width: "170px",
+    className: "whitespace-nowrap font-mono",
+    render: (c) => (
+      <span className="font-mono text-xs font-semibold text-primary whitespace-nowrap inline-block">
+        {c.nfolks_course_code}
+      </span>
+    ),
   },
   {
     id: "course_name",
@@ -74,6 +92,32 @@ const COLUMNS: DataTableColumn<Course>[] = [
     width: "130px",
     sortable: true,
     render: (c) => <StatusBadge label={formatEnumLabel(c.status)} tone={courseStatusTone(c.status)} />,
+  },
+  {
+    id: "instructor",
+    label: "Instructor",
+    width: "160px",
+    render: (c) => {
+      const list = c.instructors ?? [];
+      if (list.length > 0) {
+        return (
+          <div className="flex items-center gap-1 max-w-[180px]" title={list.map((i) => `${i.name} (${i.product || 'Instructor'})`).join(", ")}>
+            <span className="inline-flex items-center rounded-md bg-primary/10 border border-primary/20 px-2 py-0.5 text-xs font-medium text-primary truncate max-w-[130px]">
+              {list[0].name}
+            </span>
+            {list.length > 1 && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-secondary border border-border text-fg-2 shrink-0">
+                +{list.length - 1}
+              </span>
+            )}
+          </div>
+        );
+      }
+      if (c.instructor) {
+        return <span className="text-xs text-fg-2 font-medium truncate block max-w-[160px]">{c.instructor}</span>;
+      }
+      return <span className="text-muted-foreground">—</span>;
+    },
   },
   {
     id: "link_to_course_outline",
@@ -260,6 +304,7 @@ export default function CoursesPage() {
         rows={data ?? []}
         getRowId={(c) => c.id}
         isLoading={isLoading}
+        minWidth="1200px"
         emptyMessage="No courses found matching your filter criteria."
         onRowClick={(c) => navigate(`/courses/${c.id}`)}
         sortBy={sortBy}

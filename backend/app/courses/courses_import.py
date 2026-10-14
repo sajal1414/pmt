@@ -39,9 +39,18 @@ COLUMN_MAP = {
     "Certification": "certification",
     "Notes": "notes",
     "Record Source": "record_source",
+    "Instructor": "instructor",
+    "Instructors": "instructor",
+    "Assigned Instructor": "instructor",
+    "Assigned Instructors": "instructor",
 }
 
 _STATUS_MAP = {
+    "available": "available",
+    "in development": "in_development",
+    "in-development": "in_development",
+    "in_development": "in_development",
+    "development": "in_development",
     "backlog": "backlog",
     "pipeline": "pipeline",
     "draft": "draft",
@@ -55,9 +64,8 @@ _STATUS_MAP = {
     "updated_version": "updated_version",
     "custom": "custom",
     "published": "published",
-    "available": "published",
-    "active": "published",
-    "live": "published",
+    "active": "available",
+    "live": "available",
     "lockheed": "lockheed",
     "retired": "retired",
     "retire": "retired",
@@ -176,6 +184,10 @@ COLUMN_MAP_NORMALIZED = {
     "certification": "certification",
     "notes": "notes",
     "record source": "record_source",
+    "instructor": "instructor",
+    "instructors": "instructor",
+    "assigned instructor": "instructor",
+    "assigned instructors": "instructor",
 }
 
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
 import {
@@ -16,6 +16,7 @@ import {
   ExternalLink,
   Copy,
   ArrowLeft,
+  GraduationCap,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -27,14 +28,18 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { ContentViewerDialog } from "@/components/shared/content-viewer-dialog";
 import { StatusBadge, courseStatusTone, formatEnumLabel } from "@/components/shared/status-badge";
 import { useCourse, useLessons } from "@/hooks/use-courses";
+import { useInstructors } from "@/hooks/use-instructors";
 import { useCreateLesson, useDeleteCourse, useDeleteLesson, useUpdateCourse } from "@/hooks/use-course-mutations";
 import { apiGet, getErrorMessage } from "@/lib/api";
 import { nullifyEmptyStrings } from "@/lib/utils";
 import type { Lesson } from "@/lib/types";
 import { LessonAttachmentDialog } from "./lesson-attachment-dialog";
 import { CoursePreview } from "./course-preview";
+import { InstructorSelect } from "@/components/shared/instructor-select";
 
 const STATUS_OPTIONS = [
+  "available",
+  "in_development",
   "backlog",
   "pipeline",
   "draft",
@@ -75,6 +80,7 @@ export default function CourseDetailPage() {
   const navigate = useNavigate();
   const { data: course, isLoading } = useCourse(courseId);
   const { data: lessons } = useLessons(courseId);
+  const { data: allInstructors = [] } = useInstructors();
   const updateCourse = useUpdateCourse();
   const deleteCourse = useDeleteCourse();
   const createLesson = useCreateLesson(courseId);
@@ -82,6 +88,12 @@ export default function CourseDetailPage() {
 
   const [activeTab, setActiveTab] = useState<DetailTab>("details");
   const [form, setForm] = useState<Record<string, string>>({});
+  const [instructorIds, setInstructorIds] = useState<number[]>([]);
+
+  const selectedInstructorDetails = useMemo(() => {
+    return allInstructors.filter((inst) => instructorIds.includes(inst.id));
+  }, [allInstructors, instructorIds]);
+
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [newLessonTitle, setNewLessonTitle] = useState("");
   const [newLessonDuration, setNewLessonDuration] = useState("");
@@ -112,6 +124,7 @@ export default function CourseDetailPage() {
 
   useEffect(() => {
     if (course) {
+      setInstructorIds(course.instructor_ids ?? course.instructors?.map((i) => i.id) ?? []);
       setForm({
         // Core Identification (Cols 1-8)
         vendor: course.vendor ?? "",
@@ -167,7 +180,11 @@ export default function CourseDetailPage() {
 
   const handleSave = async () => {
     try {
-      await updateCourse.mutateAsync({ id: courseId, body: nullifyEmptyStrings(form) as never });
+      const payload = {
+        ...nullifyEmptyStrings(form),
+        instructor_ids: instructorIds,
+      };
+      await updateCourse.mutateAsync({ id: courseId, body: payload as never });
       toast.success("Course changes saved successfully");
     } catch (error) {
       toast.error(getErrorMessage(error));
@@ -342,7 +359,82 @@ export default function CourseDetailPage() {
               </CardContent>
             </Card>
 
-            {/* ── SECTION 2: MODALITY, DURATION & OUTLINE (Cols 9-13, 22) ── */}
+            {/* ── SECTION 2: ASSIGNED INSTRUCTORS & FACULTY ── */}
+            <Card className="overflow-visible border border-primary/20 shadow-xs bg-card/60">
+              <CardContent className="p-5 overflow-visible">
+                <div className="mb-4 flex items-center justify-between border-b border-border pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <GraduationCap className="size-4.5 text-primary" />
+                    <h3 className="text-sm font-bold text-fg-1">Assigned Instructors & Faculty</h3>
+                    <span className="text-xs text-muted-foreground font-medium">
+                      ({instructorIds.length} assigned)
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground hidden sm:block">
+                    Search and link instructors by name, skill, or product
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-3.5">
+                  <div className="flex flex-col gap-1.5">
+                    <label className={FIELD_CLASS}>Add or Change Instructors</label>
+                    <InstructorSelect
+                      selectedIds={instructorIds}
+                      onChange={setInstructorIds}
+                      placeholder="Search by instructor name, skill, or product…"
+                    />
+                  </div>
+
+                  {/* Render Selected Instructor Visual Cards */}
+                  {selectedInstructorDetails.length > 0 && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-1">
+                      {selectedInstructorDetails.map((inst) => (
+                        <div
+                          key={inst.id}
+                          className="flex flex-col justify-between p-3 rounded-lg border border-border bg-secondary/40 text-xs shadow-2xs"
+                        >
+                          <div className="flex items-start justify-between gap-2 mb-1.5">
+                            <div className="min-w-0">
+                              <span className="font-semibold text-fg-1 block truncate">
+                                {inst.name}
+                              </span>
+                              <span className="text-[11px] text-muted-foreground block truncate">
+                                {inst.email}
+                              </span>
+                            </div>
+                            {inst.product && (
+                              <span className="rounded-md bg-primary/10 border border-primary/20 px-2 py-0.5 text-[10px] font-semibold text-primary truncate shrink-0">
+                                {inst.product}
+                              </span>
+                            )}
+                          </div>
+
+                          {inst.skills_products && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {inst.skills_products
+                                .split(/[,;\n]/)
+                                .map((s) => s.trim())
+                                .filter(Boolean)
+                                .slice(0, 3)
+                                .map((skill, i) => (
+                                  <span
+                                    key={i}
+                                    className="rounded bg-secondary border border-border/60 px-1.5 py-0.2 text-[10px] text-fg-2"
+                                  >
+                                    {skill}
+                                  </span>
+                                ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* ── SECTION 3: MODALITY, DURATION & OUTLINE (Cols 9-13, 22) ── */}
             <Card>
               <CardContent className="p-5">
                 <div className="mb-4 flex items-center gap-2 border-b border-border-subtle pb-2.5">
@@ -478,8 +570,8 @@ export default function CourseDetailPage() {
             </Card>
 
             {/* ── SECTION 4: OPERATIONS, SCHEDULE & OWNERSHIP (Cols 14-20) ── */}
-            <Card>
-              <CardContent className="p-5">
+            <Card className="overflow-visible">
+              <CardContent className="p-5 overflow-visible">
                 <div className="mb-4 flex items-center gap-2 border-b border-border-subtle pb-2.5">
                   <Calendar className="size-4 text-primary" />
                   <h3 className="text-sm font-bold text-fg-1">Operations, Schedule & Ownership</h3>

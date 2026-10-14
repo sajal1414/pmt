@@ -1,9 +1,13 @@
+import io
+import re
 import uuid
+import zipfile
 from datetime import date
 from decimal import Decimal
 
 import openpyxl
 from flask import Blueprint, Response, g, request
+from openpyxl.utils import get_column_letter
 from pydantic import BaseModel, ConfigDict, ValidationError
 from sqlalchemy.orm import joinedload
 
@@ -236,9 +240,46 @@ def import_courses():
     if file is None:
         return respond(FAIL_MESSAGE, "No file uploaded (expected multipart field 'file')"), 400
 
-    workbook = openpyxl.load_workbook(file, data_only=True)
+    file_bytes = file.read()
+    if not file_bytes:
+        return respond(FAIL_MESSAGE, "Uploaded file is empty"), 400
 
-    # 1. Identify Courses sheet
+    # 1. Fast XML extraction of cell hyperlinks from .xlsx package
+    hyperlinks_map = {}
+    try:
+        with zipfile.ZipFile(io.BytesIO(file_bytes), "r") as z:
+            rels = {}
+            for name in z.namelist():
+                if name.endswith(".rels") and "sheet" in name:
+                    content = z.read(name).decode("utf-8", errors="ignore")
+                    for m in re.finditer(r'Id="([^"]+)"[^>]*Target="([^"]+)"', content):
+                        rels[m.group(1)] = m.group(2)
+                    for m in re.finditer(r'Target="([^"]+)"[^>]*Id="([^"]+)"', content):
+                        rels[m.group(2)] = m.group(1)
+
+            for name in z.namelist():
+                if "worksheets/sheet" in name and not name.endswith(".rels"):
+                    content = z.read(name).decode("utf-8", errors="ignore")
+                    for m in re.finditer(
+                        r'<hyperlink ref="([A-Z0-9]+)"(?: [^>]*r:id="([^"]+)")?(?: [^>]*display="([^"]+)")?',
+                        content,
+                    ):
+                        ref = m.group(1)
+                        r_id = m.group(2)
+                        disp = m.group(3)
+                        url = disp or rels.get(r_id)
+                        if url:
+                            hyperlinks_map[ref] = url
+    except Exception:
+        pass
+
+    # 2. Fast read_only streaming workbook load
+    try:
+        workbook = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True, read_only=True)
+    except Exception:
+        workbook = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
+
+    # 3. Identify Courses sheet
     courses_sheet_name = None
     for name in workbook.sheetnames:
         clean = name.strip().lower()
@@ -249,12 +290,12 @@ def import_courses():
         courses_sheet_name = workbook.sheetnames[0]
 
     sheet = workbook[courses_sheet_name]
-    if sheet.max_row < 1:
-        return respond(FAIL_MESSAGE, "Courses sheet is empty"), 400
+    row_iter = sheet.iter_rows(values_only=True)
+    raw_headers = next(row_iter, None)
+    if not raw_headers or not any(raw_headers):
+        return respond(FAIL_MESSAGE, "Courses sheet has no headers or is empty"), 400
 
-    headers = [c.value for c in sheet[1]]
-    if not headers or not any(headers):
-        return respond(FAIL_MESSAGE, "Courses sheet has no headers"), 400
+    headers = [str(h).strip() if h is not None else None for h in raw_headers]
 
     link_col_idx = None
     for idx, h in enumerate(headers):
@@ -298,21 +339,37 @@ def import_courses():
         clean_headers_set = {str(h).strip().lower() for h in headers if h}
         single_sheet_mode = bool(clean_headers_set & {"lesson title", "title", "class name", "video link", "video url", "attachment url"})
 
-        for row_number in range(2, sheet.max_row + 1):
-            raw_cells = [sheet.cell(row=row_number, column=c) for c in range(1, len(headers) + 1)]
-            if not any(c.value is not None and str(c.value).strip() != "" for c in raw_cells):
+        empty_streak = 0
+        for row_number, raw_cells in enumerate(row_iter, start=2):
+            if not raw_cells or not any(c is not None and str(c).strip() != "" for c in raw_cells):
+                empty_streak += 1
+                if empty_streak >= 30:
+                    break
                 continue
 
             row = {}
-            for idx, (h, cell) in enumerate(zip(headers, raw_cells)):
+            for idx, (h, val) in enumerate(zip(headers, raw_cells)):
                 if not h:
                     continue
-                val = cell.value
-                if idx == link_col_idx and cell.hyperlink and cell.hyperlink.target:
-                    val = cell.hyperlink.target
+                if idx == link_col_idx:
+                    coord = f"{get_column_letter(idx + 1)}{row_number}"
+                    if coord in hyperlinks_map:
+                        val = hyperlinks_map[coord]
                 row[h] = val
 
             fields = map_row(row)
+
+            # Check if this row actually contains course identity data (prevents ghost rows from Excel formulas)
+            code = fields.get("nfolks_course_code")
+            name = fields.get("course_name")
+            row_id = fields.get("id")
+            if not (code or name or row_id):
+                empty_streak += 1
+                if empty_streak >= 30:
+                    break
+                continue
+
+            empty_streak = 0
             raw_instructor = fields.pop("instructor", None)
             resolved_instructor_ids = []
             if raw_instructor:
@@ -478,18 +535,26 @@ def import_courses():
             except StopIteration:
                 l_headers = None
 
+            l_empty_streak = 0
             if l_headers:
                 for l_row_num, raw_l_row in enumerate(lesson_rows, start=2):
                     if raw_l_row is None or all(c is None or str(c).strip() == "" for c in raw_l_row):
+                        l_empty_streak += 1
+                        if l_empty_streak >= 30:
+                            break
                         continue
                     l_dict = dict(zip(l_headers, raw_l_row))
                     l_fields = map_lesson_row(l_dict)
 
                     code = l_fields.get("course_code")
                     if not code:
+                        l_empty_streak += 1
+                        if l_empty_streak >= 30:
+                            break
                         lesson_errors.append({"row": l_row_num, "reason": "Missing course code for lesson"})
                         continue
 
+                    l_empty_streak = 0
                     code_key = str(code).strip().lower()
                     target_course_id = course_code_to_id.get(code_key) or course_name_to_id.get(code_key)
                     if not target_course_id:

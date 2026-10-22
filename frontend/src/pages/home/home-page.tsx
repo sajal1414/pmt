@@ -31,12 +31,23 @@ export default function HomePage() {
   const courses = coursesQuery.data ?? [];
   const instructors = instructorsQuery.data ?? [];
 
-  // Compute status distributions
-  const publishedCount = courses.filter((c) => c.status === "published").length;
-  const inProgressCount = courses.filter((c) => c.status === "in_progress" || c.status === "for_review" || c.status === "updated_version").length;
-  const pipelineCount = courses.filter((c) => c.status === "pipeline" || c.status === "backlog" || c.status === "draft").length;
+  // Compute status distributions matching atlas lifecycle definitions
+  const availableCount = courses.filter((c) => c.status === "available" || c.status === "published").length;
+  const inDevelopmentCount = courses.filter(
+    (c) =>
+      c.status === "in_development" ||
+      c.status === "in_progress" ||
+      c.status === "for_review" ||
+      c.status === "updated_version" ||
+      c.status === "custom" ||
+      c.status === "lockheed"
+  ).length;
+  const pipelineCount = courses.filter(
+    (c) => c.status === "pipeline" || c.status === "backlog" || c.status === "draft"
+  ).length;
+  const retiredCount = courses.filter((c) => c.status === "retired").length;
 
-  // Platform-Level Lifecycle Aggregation (Client Directive: Replace Client Deliveries with Platform-level Release Cycle)
+  // Platform-Level Lifecycle Aggregation (Curriculum readiness by platform)
   const platformStats = useMemo(() => {
     const map: Record<string, { total: number; published: number; inProgress: number; pipeline: number }> = {};
     for (const c of courses) {
@@ -45,9 +56,16 @@ export default function HomePage() {
         map[plat] = { total: 0, published: 0, inProgress: 0, pipeline: 0 };
       }
       map[plat].total += 1;
-      if (c.status === "published") {
+      if (c.status === "available" || c.status === "published") {
         map[plat].published += 1;
-      } else if (c.status === "in_progress" || c.status === "for_review" || c.status === "updated_version") {
+      } else if (
+        c.status === "in_development" ||
+        c.status === "in_progress" ||
+        c.status === "for_review" ||
+        c.status === "updated_version" ||
+        c.status === "custom" ||
+        c.status === "lockheed"
+      ) {
         map[plat].inProgress += 1;
       } else {
         map[plat].pipeline += 1;
@@ -134,8 +152,8 @@ export default function HomePage() {
               </div>
 
               <div className="flex items-center gap-2 border-r border-white/15 pr-5">
-                <span className="font-mono text-xl font-extrabold text-white">{publishedCount}</span>
-                <span className="text-primary-foreground/70 leading-tight">Production<br />Published</span>
+                <span className="font-mono text-xl font-extrabold text-white">{availableCount}</span>
+                <span className="text-primary-foreground/70 leading-tight">Available<br />in Catalog</span>
               </div>
 
               <div className="flex items-center gap-2">
@@ -164,18 +182,18 @@ export default function HomePage() {
             <h2 className="mt-2.5 text-base font-bold text-fg-1">Global Release Lifecycle</h2>
             <p className="mt-1 text-xs text-muted-foreground">Portfolio-wide course readiness and pipeline</p>
 
-            <div className="mt-5 space-y-4">
+            <div className="mt-5 space-y-3.5">
               <div>
                 <div className="flex justify-between text-xs font-medium">
                   <span className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400">
-                    <span className="size-2 rounded-full bg-emerald-500" /> Published & Ready
+                    <span className="size-2 rounded-full bg-emerald-500" /> Available & Ready
                   </span>
-                  <span className="font-mono text-fg-1 font-bold">{publishedCount}</span>
+                  <span className="font-mono text-fg-1 font-bold">{availableCount}</span>
                 </div>
                 <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-secondary">
                   <div
                     className="h-full rounded-full bg-emerald-500 transition-all duration-700"
-                    style={{ width: `${courses.length ? (publishedCount / courses.length) * 100 : 0}%` }}
+                    style={{ width: `${courses.length ? (availableCount / courses.length) * 100 : 0}%` }}
                   />
                 </div>
               </div>
@@ -183,14 +201,14 @@ export default function HomePage() {
               <div>
                 <div className="flex justify-between text-xs font-medium">
                   <span className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400">
-                    <span className="size-2 rounded-full bg-amber-500" /> In Review & Update
+                    <span className="size-2 rounded-full bg-amber-500" /> In Development & Review
                   </span>
-                  <span className="font-mono text-fg-1 font-bold">{inProgressCount}</span>
+                  <span className="font-mono text-fg-1 font-bold">{inDevelopmentCount}</span>
                 </div>
                 <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-secondary">
                   <div
                     className="h-full rounded-full bg-amber-500 transition-all duration-700"
-                    style={{ width: `${courses.length ? (inProgressCount / courses.length) * 100 : 0}%` }}
+                    style={{ width: `${courses.length ? (inDevelopmentCount / courses.length) * 100 : 0}%` }}
                   />
                 </div>
               </div>
@@ -209,13 +227,28 @@ export default function HomePage() {
                   />
                 </div>
               </div>
+
+              <div>
+                <div className="flex justify-between text-xs font-medium">
+                  <span className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
+                    <span className="size-2 rounded-full bg-slate-400" /> Retired & Archived
+                  </span>
+                  <span className="font-mono text-fg-1 font-bold">{retiredCount}</span>
+                </div>
+                <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-secondary">
+                  <div
+                    className="h-full rounded-full bg-slate-400 transition-all duration-700"
+                    style={{ width: `${courses.length ? (retiredCount / courses.length) * 100 : 0}%` }}
+                  />
+                </div>
+              </div>
             </div>
           </div>
 
           <div className="mt-6 flex items-center justify-between border-t border-border-subtle pt-3 text-xs">
             <span className="text-muted-foreground">Catalog completion rate</span>
             <span className="font-semibold text-primary">
-              {courses.length ? Math.round((publishedCount / courses.length) * 100) : 0}% Production Ready
+              {courses.length ? Math.round((availableCount / courses.length) * 100) : 0}% Available & Ready
             </span>
           </div>
         </div>
@@ -254,11 +287,11 @@ export default function HomePage() {
 
                     <div className="mt-2 flex items-center justify-between text-[10.5px] text-muted-foreground">
                       <span className="text-emerald-600 dark:text-emerald-400 font-medium">
-                        {stat.published} Published
+                        {stat.published} Available
                       </span>
                       <span>·</span>
                       <span className="text-amber-600 dark:text-amber-400 font-medium">
-                        {stat.inProgress} Review
+                        {stat.inProgress} In Dev
                       </span>
                       <span>·</span>
                       <span className="text-sky-600 dark:text-sky-400 font-medium">

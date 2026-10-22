@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Plus, Search, Pencil, Trash2, Eye } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Eye, Upload } from "lucide-react";
 import { SurfaceHeader } from "@/components/shared/surface-header";
 import { DataTable, type DataTableColumn } from "@/components/shared/data-table";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
@@ -9,6 +9,8 @@ import { useDeleteInstructor, useInstructors } from "@/hooks/use-instructors";
 import type { Instructor } from "@/lib/types";
 import { InstructorFormDialog } from "./instructor-form-dialog";
 import { InstructorDetailDialog } from "./instructor-detail-dialog";
+import { InstructorBulkImportDialog } from "./instructor-bulk-import-dialog";
+import { useAuthStore } from "@/stores/auth-store";
 import { toast } from "sonner";
 import { getErrorMessage } from "@/lib/api";
 
@@ -19,7 +21,9 @@ export default function InstructorsPage() {
   const [viewing, setViewing] = useState<Instructor | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [toDelete, setToDelete] = useState<Instructor | null>(null);
+  const isAdmin = useAuthStore((s) => s.user?.role === "admin");
   const pageSize = 20;
   const deleteInstructor = useDeleteInstructor();
 
@@ -131,15 +135,22 @@ export default function InstructorsPage() {
         eyebrow="Instructor Repository"
         title="Instructors"
         actions={
-          <Button
-            size="sm"
-            onClick={() => {
-              setEditing(null);
-              setFormOpen(true);
-            }}
-          >
-            <Plus className="size-4" /> New instructor
-          </Button>
+          <>
+            {isAdmin && (
+              <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
+                <Upload className="size-4" /> Bulk import
+              </Button>
+            )}
+            <Button
+              size="sm"
+              onClick={() => {
+                setEditing(null);
+                setFormOpen(true);
+              }}
+            >
+              <Plus className="size-4" /> New instructor
+            </Button>
+          </>
         }
       />
 
@@ -204,6 +215,7 @@ export default function InstructorsPage() {
           }
         }}
       />
+      {isAdmin && <InstructorBulkImportDialog open={importOpen} onOpenChange={setImportOpen} />}
     </div>
   );
 }

@@ -1,5 +1,7 @@
+import io
 from decimal import Decimal
 
+import openpyxl
 from flask import Blueprint, g, request
 from pydantic import BaseModel, ConfigDict, EmailStr, ValidationError
 
@@ -7,6 +9,7 @@ from app.auth.auth_utils import hash_password, require_role, verify_jwt_token
 from app.config import FAIL_MESSAGE, SUCCESS_MESSAGE, respond
 from app.db import to_dict
 from app.instructors.instructors_dao import InstructorDAO
+from app.instructors.instructors_import import map_instructor_row
 from app.models import Instructor, TravelPreference, User, UserRole
 
 instructors_api = Blueprint("instructors_api", __name__, url_prefix="/v1/instructors")
@@ -154,3 +157,160 @@ def delete_instructor(instructor_id):
 
         dao.delete(instructor)
         return respond(SUCCESS_MESSAGE, "Instructor deleted", None)
+
+
+@instructors_api.route("/import", methods=["POST"])
+@verify_jwt_token()
+@require_role("admin")
+def import_instructors():
+    file = request.files.get("file")
+    if file is None:
+        return respond(FAIL_MESSAGE, "No file uploaded (expected multipart field 'file')"), 400
+
+    file_bytes = file.read()
+    if not file_bytes:
+        return respond(FAIL_MESSAGE, "Uploaded file is empty"), 400
+
+    try:
+        workbook = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True, read_only=True)
+    except Exception:
+        workbook = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
+
+    # 1. Identify Instructors sheet
+    instructors_sheet_name = None
+    for name in workbook.sheetnames:
+        clean = name.strip().lower()
+        if "instructor" in clean:
+            instructors_sheet_name = name
+            break
+    if not instructors_sheet_name:
+        instructors_sheet_name = workbook.sheetnames[0]
+
+    sheet = workbook[instructors_sheet_name]
+    row_iter = sheet.iter_rows(values_only=True)
+    raw_headers = next(row_iter, None)
+    if not raw_headers or not any(raw_headers):
+        return respond(FAIL_MESSAGE, "Instructors sheet has no headers or is empty"), 400
+
+    headers = [str(h).strip() if h is not None else None for h in raw_headers]
+
+    created, updated, skipped, errors = 0, 0, 0, []
+
+    # Precompute default password hash once outside the loop to avoid repeating bcrypt calculations
+    default_password_hash = hash_password("nFolks")
+
+    with InstructorDAO() as dao:
+        all_instructors = dao.session.query(Instructor).all()
+        instructor_by_email = {inst.email.strip().lower(): inst for inst in all_instructors if inst.email}
+        instructor_by_name = {inst.name.strip().lower(): inst for inst in all_instructors if inst.name}
+
+        all_users = dao.session.query(User).all()
+        user_by_email = {u.email.strip().lower(): u for u in all_users if u.email}
+        user_by_instructor_id = {u.instructor_id: u for u in all_users if u.instructor_id}
+
+        batch_seen_emails = {}
+
+        empty_streak = 0
+        for row_number, raw_cells in enumerate(row_iter, start=2):
+            if not raw_cells or not any(c is not None and str(c).strip() != "" for c in raw_cells):
+                empty_streak += 1
+                if empty_streak >= 30:
+                    break
+                continue
+
+            empty_streak = 0
+            row = {}
+            for h, val in zip(headers, raw_cells):
+                if h:
+                    row[h] = val
+
+            fields = map_instructor_row(row)
+            name = fields.get("name")
+            if not name:
+                errors.append({"row": row_number, "reason": "Instructor name is required"})
+                continue
+
+            email = fields.get("email")
+            if not email:
+                errors.append({"row": row_number, "reason": "Email could not be determined"})
+                continue
+
+            email_key = email.strip().lower()
+
+            try:
+                body = InstructorCreateRequest(**fields)
+                validated_data = body.model_dump()
+            except ValidationError as ve:
+                errors.append({"row": row_number, "reason": str(ve)})
+                continue
+
+            existing_inst = batch_seen_emails.get(email_key) or instructor_by_email.get(email_key)
+            if not existing_inst and name.strip().lower() in instructor_by_name:
+                existing_inst = instructor_by_name[name.strip().lower()]
+
+            if existing_inst:
+                changed_fields = {}
+                for k, new_val in validated_data.items():
+                    curr_val = getattr(existing_inst, k, None)
+                    curr_cmp = curr_val.value if hasattr(curr_val, "value") else curr_val
+                    new_cmp = new_val.value if hasattr(new_val, "value") else new_val
+
+                    if isinstance(curr_cmp, str) and isinstance(new_cmp, str):
+                        if curr_cmp.strip() == new_cmp.strip():
+                            continue
+                    elif curr_cmp == new_cmp:
+                        continue
+
+                    if new_val is not None:
+                        changed_fields[k] = new_val
+
+                if changed_fields:
+                    for k, v in changed_fields.items():
+                        setattr(existing_inst, k, v)
+
+                    linked_user = user_by_instructor_id.get(existing_inst.id) or user_by_email.get(email_key)
+                    if linked_user and "name" in changed_fields:
+                        linked_user.full_name = existing_inst.name
+
+                    updated += 1
+                else:
+                    skipped += 1
+
+                batch_seen_emails[email_key] = existing_inst
+            else:
+                new_inst = Instructor(**validated_data)
+                dao.session.add(new_inst)
+
+                existing_user = user_by_email.get(email_key)
+                if existing_user:
+                    existing_user.instructor = new_inst
+                    existing_user.role = UserRole.instructor
+                    existing_user.full_name = new_inst.name
+                else:
+                    new_user = User(
+                        email=new_inst.email,
+                        password_hash=default_password_hash,
+                        role=UserRole.instructor,
+                        full_name=new_inst.name,
+                        instructor=new_inst,
+                        must_change_password=True,
+                    )
+                    dao.session.add(new_user)
+                    user_by_email[email_key] = new_user
+
+                created += 1
+                batch_seen_emails[email_key] = new_inst
+                instructor_by_email[email_key] = new_inst
+                instructor_by_name[new_inst.name.strip().lower()] = new_inst
+
+    return respond(
+        SUCCESS_MESSAGE,
+        "Import completed",
+        {
+            "created": created,
+            "updated": updated,
+            "skipped": skipped,
+            "errors": errors,
+        },
+    )
+

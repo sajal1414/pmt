@@ -1,3 +1,4 @@
+import { useNavigate } from "react-router";
 import {
   Dialog,
   DialogContent,
@@ -14,8 +15,11 @@ import {
   Briefcase,
   Star,
   Plane,
+  Phone,
+  ExternalLink,
 } from "lucide-react";
 import type { Instructor } from "@/lib/types";
+import { StatusBadge, courseStatusTone, formatEnumLabel } from "@/components/shared/status-badge";
 
 interface InstructorDetailDialogProps {
   instructor: Instructor | null;
@@ -29,7 +33,13 @@ export function InstructorDetailDialog({
   open,
   onOpenChange,
 }: InstructorDetailDialogProps) {
+  const navigate = useNavigate();
   if (!instructor) return null;
+
+  const handleCourseClick = (courseId: number) => {
+    onOpenChange(false);
+    navigate(`/courses/${courseId}`);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -51,6 +61,13 @@ export function InstructorDetailDialog({
                 <div className="flex flex-wrap items-center gap-1.5 mt-1 text-xs text-muted-foreground break-all">
                   <Mail className="size-3 shrink-0 text-fg-3" />
                   <span className="truncate">{instructor.email}</span>
+                  {instructor.phone && (
+                    <>
+                      <span>·</span>
+                      <Phone className="size-3 shrink-0 text-fg-3" />
+                      <span className="font-mono">{instructor.phone}</span>
+                    </>
+                  )}
                   {instructor.location && (
                     <>
                       <span>·</span>
@@ -66,6 +83,66 @@ export function InstructorDetailDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-2 min-w-0">
+          {/* ── COURSES THEY OWN ── */}
+          <div className="rounded-2xl border border-primary/20 bg-card p-4 shadow-2xs min-w-0">
+            <div className="flex items-center justify-between mb-3">
+              <span className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-primary">
+                <BookOpen className="size-3.5 shrink-0" />
+                Courses Owned by {instructor.name} ({instructor.courses_owned?.length ?? 0})
+              </span>
+            </div>
+
+            {instructor.courses_owned && instructor.courses_owned.length > 0 ? (
+              <div className="grid grid-cols-1 gap-2 max-h-56 overflow-y-auto pr-1">
+                {instructor.courses_owned.map((c, idx) => {
+                  const isCatalog = c.in_repository !== false && c.id != null;
+                  return (
+                    <div
+                      key={c.id ?? `ext-${idx}`}
+                      className="flex items-center justify-between gap-2 rounded-xl border border-border bg-surface/60 p-2.5 text-xs shadow-2xs hover:border-primary/40 transition-colors"
+                    >
+                      <div className="min-w-0 flex items-center gap-2">
+                        {isCatalog ? (
+                          <>
+                            <span className="rounded bg-primary/10 text-primary px-1.5 py-0.5 text-[10px] font-bold shrink-0">
+                              Catalog
+                            </span>
+                            {c.nfolks_course_code && (
+                              <span className="font-mono font-bold text-primary shrink-0">{c.nfolks_course_code}</span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => c.id && handleCourseClick(c.id)}
+                              className="font-semibold text-fg-1 hover:text-primary hover:underline truncate inline-flex items-center gap-1 cursor-pointer text-left"
+                              title="Go to course details in catalog"
+                            >
+                              <span className="truncate">{c.course_name}</span>
+                              <ExternalLink className="size-3 shrink-0 text-muted-foreground" />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <span className="rounded bg-amber-500/15 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 text-[10px] font-bold shrink-0">
+                              External / Non-Repository
+                            </span>
+                            <span className="font-medium text-fg-1 truncate">{c.course_name}</span>
+                          </>
+                        )}
+                      </div>
+                      {isCatalog && (
+                        <StatusBadge label={formatEnumLabel(c.status)} tone={courseStatusTone(c.status)} />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground italic bg-secondary/50 p-3 rounded-xl">
+                No courses currently registered as owned by this instructor.
+              </p>
+            )}
+          </div>
+
           {/* ── PLATFORM & PRODUCTS CAN TEACH (Client Directive) ── */}
           <div className="rounded-2xl border border-primary/25 bg-primary/5 p-4 min-w-0">
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-primary">

@@ -1,16 +1,9 @@
 export type CourseStatus =
   | "available"
   | "in_development"
-  | "backlog"
+  | "retired"
   | "pipeline"
-  | "draft"
-  | "in_progress"
-  | "for_review"
-  | "updated_version"
-  | "custom"
-  | "published"
-  | "lockheed"
-  | "retired";
+  | "backlog";
 
 export type CourseOutlineStatus = "missing" | "not_yet_scoped" | "draft" | "partially_complete" | "validated";
 export type LabLocation = "ITZ" | "nFolks" | "instructor_owned" | "na";
@@ -82,6 +75,7 @@ export interface Instructor {
   id: number;
   name: string;
   email: string;
+  phone: string | null;
   location: string | null;
   travel_preference: TravelPreference | null;
   languages: string | null;
@@ -91,9 +85,17 @@ export interface Instructor {
   product: string | null;
   skills_products: string | null;
   courses_can_teach: string | null;
+  external_courses_owned?: string | null;
   feedback_score: string | null;
   comments: string | null;
   created_at: string;
+  courses_owned?: Array<{
+    id: number | null;
+    course_name: string;
+    nfolks_course_code: string | null;
+    status: CourseStatus | "external";
+    in_repository: boolean;
+  }>;
 }
 
 export interface Delivery {

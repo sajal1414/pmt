@@ -13,16 +13,9 @@ import { formatEnumLabel } from "@/components/shared/status-badge";
 const STATUS_OPTIONS = [
   "available",
   "in_development",
-  "backlog",
-  "pipeline",
-  "draft",
-  "in_progress",
-  "for_review",
-  "updated_version",
-  "custom",
-  "published",
-  "lockheed",
   "retired",
+  "pipeline",
+  "backlog",
 ];
 
 const FIELD_CLASS = "text-xs font-medium text-fg-2";

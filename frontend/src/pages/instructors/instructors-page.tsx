@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Plus, Search, Pencil, Trash2, Eye, Upload } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Eye, Upload, Phone } from "lucide-react";
 import { SurfaceHeader } from "@/components/shared/surface-header";
 import { DataTable, type DataTableColumn } from "@/components/shared/data-table";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
@@ -34,19 +34,26 @@ export default function InstructorsPage() {
     {
       id: "name",
       label: "Name & Contact",
+      width: "240px",
       render: (i) => (
-        <div>
-          <span className="font-semibold text-fg-1 hover:text-primary transition-colors cursor-pointer">{i.name}</span>
-          <span className="block text-[11px] text-muted-foreground">{i.email}</span>
+        <div className="truncate">
+          <span className="font-semibold text-fg-1 hover:text-primary transition-colors cursor-pointer truncate block">{i.name}</span>
+          <span className="block text-[11px] text-muted-foreground truncate">{i.email}</span>
+          {i.phone && (
+            <span className="flex items-center gap-1 text-[11px] text-muted-foreground font-mono mt-0.5 truncate">
+              <Phone className="size-2.5 text-fg-3 shrink-0" />
+              {i.phone}
+            </span>
+          )}
         </div>
       ),
     },
     {
       id: "platform",
       label: "Platform",
-      width: "140px",
+      width: "160px",
       render: (i) => (
-        <span className="rounded-md bg-secondary/80 px-2 py-0.5 text-xs font-semibold text-fg-2">
+        <span className="rounded-md bg-secondary/80 px-2 py-0.5 text-xs font-semibold text-fg-2 truncate inline-block max-w-full">
           {i.platform || "—"}
         </span>
       ),
@@ -54,14 +61,15 @@ export default function InstructorsPage() {
     {
       id: "product",
       label: "Products & Can Teach",
+      width: "280px",
       render: (i) => {
         const product = i.product;
         const skills = i.skills_products || i.courses_can_teach;
         return (
-          <div className="max-w-xs">
-            {product && <span className="font-medium text-xs text-fg-1 block">{product}</span>}
+          <div className="truncate">
+            {product && <span className="font-medium text-xs text-fg-1 block truncate">{product}</span>}
             {skills && (
-              <span className="line-clamp-1 text-[11px] text-muted-foreground">
+              <span className="truncate text-[11px] text-muted-foreground block" title={skills}>
                 {skills}
               </span>
             )}
@@ -174,6 +182,7 @@ export default function InstructorsPage() {
         rows={data ?? []}
         getRowId={(i) => i.id}
         isLoading={isLoading}
+        minWidth="1110px"
         emptyMessage="No instructors found."
         onRowClick={(i) => {
           setViewing(i);

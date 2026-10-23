@@ -1,11 +1,13 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { apiDelete, apiGet, apiPost, apiPut } from "@/lib/api";
 import type { AppUser } from "@/lib/types";
 
-export function useUsers() {
+export function useUsers(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ["users"],
     queryFn: () => apiGet<AppUser[]>("/v1/users"),
+    enabled: options?.enabled ?? true,
+    placeholderData: keepPreviousData,
   });
 }
 

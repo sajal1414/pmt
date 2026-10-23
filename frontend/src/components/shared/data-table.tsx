@@ -52,7 +52,7 @@ export function DataTable<T>({
     <div className="flex flex-1 flex-col overflow-hidden rounded-lg border border-border bg-surface">
       <div className="flex-1 overflow-auto">
         <table
-          className="w-full border-collapse text-xs"
+          className="w-full border-collapse text-xs table-fixed"
           style={minWidth ? { minWidth } : undefined}
         >
           <colgroup>
@@ -65,8 +65,9 @@ export function DataTable<T>({
               {columns.map((col) => (
                 <th
                   key={col.id}
+                  style={col.width ? { width: col.width, minWidth: col.width } : undefined}
                   className={cn(
-                    "border-b border-border-subtle px-2.5 py-1.5 text-[10.5px] font-bold uppercase tracking-[0.04em] whitespace-nowrap text-fg-3",
+                    "border-b border-border-subtle px-2.5 py-2 text-[10.5px] font-bold uppercase tracking-[0.04em] whitespace-nowrap text-fg-3 text-left",
                     col.className,
                     col.align === "right" && "text-right",
                     col.align === "center" && "text-center",
@@ -94,7 +95,7 @@ export function DataTable<T>({
               Array.from({ length: 5 }).map((_, i) => (
                 <tr key={i} className="border-t border-border-subtle">
                   {columns.map((col) => (
-                    <td key={col.id} className="px-2.5 py-1.5">
+                    <td key={col.id} style={col.width ? { width: col.width, minWidth: col.width } : undefined} className="px-2.5 py-2">
                       <Skeleton className="h-4 w-full max-w-32" />
                     </td>
                   ))}
@@ -119,8 +120,9 @@ export function DataTable<T>({
                   {columns.map((col) => (
                     <td
                       key={col.id}
+                      style={col.width ? { width: col.width, minWidth: col.width } : undefined}
                       className={cn(
-                        "px-2.5 py-1.5 align-middle text-fg-1",
+                        "px-2.5 py-2 align-middle text-fg-1 text-left",
                         col.className,
                         col.align === "right" && "text-right",
                         col.align === "center" && "text-center",

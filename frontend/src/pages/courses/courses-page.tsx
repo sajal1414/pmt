@@ -16,16 +16,9 @@ import { BulkImportDialog } from "./bulk-import-dialog";
 const STATUS_OPTIONS = [
   "available",
   "in_development",
-  "backlog",
-  "pipeline",
-  "draft",
-  "in_progress",
-  "for_review",
-  "updated_version",
-  "custom",
-  "published",
-  "lockheed",
   "retired",
+  "pipeline",
+  "backlog",
 ];
 
 const PLATFORM_OPTIONS = [

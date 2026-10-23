@@ -57,6 +57,12 @@ COLUMN_MAP_NORMALIZED = {
     "comment": "comments",
     "notes": "comments",
     "remarks": "comments",
+    "phone": "phone",
+    "phone number": "phone",
+    "phone_number": "phone",
+    "mobile": "phone",
+    "contact number": "phone",
+    "contact": "phone",
 }
 
 TRAVEL_PREFERENCE_MAP = {

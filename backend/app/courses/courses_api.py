@@ -373,7 +373,7 @@ def import_courses():
             raw_instructor = fields.pop("instructor", None)
             resolved_instructor_ids = []
             if raw_instructor:
-                parts = [p.strip() for p in str(raw_instructor).split(",") if p.strip()]
+                parts = [p.strip() for p in re.split(r"[;,]", str(raw_instructor)) if p.strip()]
                 for p in parts:
                     match_id = instructor_by_key.get(p.lower())
                     if not match_id:

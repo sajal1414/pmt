@@ -1,4 +1,5 @@
 import io
+import re
 from decimal import Decimal
 
 import openpyxl
@@ -10,7 +11,7 @@ from app.config import FAIL_MESSAGE, SUCCESS_MESSAGE, respond
 from app.db import to_dict
 from app.instructors.instructors_dao import InstructorDAO
 from app.instructors.instructors_import import map_instructor_row
-from app.models import Instructor, TravelPreference, User, UserRole
+from app.models import Course, Instructor, TravelPreference, User, UserRole
 
 instructors_api = Blueprint("instructors_api", __name__, url_prefix="/v1/instructors")
 
@@ -18,6 +19,7 @@ instructors_api = Blueprint("instructors_api", __name__, url_prefix="/v1/instruc
 class InstructorCreateRequest(BaseModel):
     name: str
     email: EmailStr
+    phone: str | None = None
     location: str | None = None
     travel_preference: TravelPreference | None = None
     languages: str | None = None
@@ -27,14 +29,17 @@ class InstructorCreateRequest(BaseModel):
     product: str | None = None
     skills_products: str | None = None
     courses_can_teach: str | None = None
+    external_courses_owned: str | None = None
     feedback_score: Decimal | None = None
     comments: str | None = None
+    owned_course_ids: list[int] | None = None
 
 
 class InstructorUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str | None = None
+    phone: str | None = None
     location: str | None = None
     travel_preference: TravelPreference | None = None
     languages: str | None = None
@@ -44,12 +49,43 @@ class InstructorUpdateRequest(BaseModel):
     product: str | None = None
     skills_products: str | None = None
     courses_can_teach: str | None = None
+    external_courses_owned: str | None = None
     feedback_score: Decimal | None = None
     comments: str | None = None
+    owned_course_ids: list[int] | None = None
 
 
 def _is_own_record(current_user, instructor_id: int) -> bool:
     return current_user["role"] == "admin" or current_user.get("instructor_id") == instructor_id
+
+
+def _instructor_to_dict(instructor) -> dict:
+    d = to_dict(instructor)
+    owned = []
+    # 1. In-repository courses
+    if hasattr(instructor, "courses") and instructor.courses:
+        for c in instructor.courses:
+            status_val = c.status.value if hasattr(c.status, "value") else str(c.status)
+            owned.append({
+                "id": c.id,
+                "course_name": c.course_name,
+                "nfolks_course_code": c.nfolks_course_code,
+                "status": status_val,
+                "in_repository": True,
+            })
+    # 2. External / custom courses (not in repository)
+    ext_raw = getattr(instructor, "external_courses_owned", None)
+    if ext_raw:
+        for name in [x.strip() for x in re.split(r"[;\n]", str(ext_raw)) if x.strip()]:
+            owned.append({
+                "id": None,
+                "course_name": name,
+                "nfolks_course_code": None,
+                "status": "external",
+                "in_repository": False,
+            })
+    d["courses_owned"] = owned
+    return d
 
 
 @instructors_api.route("", methods=["GET"])
@@ -57,7 +93,7 @@ def _is_own_record(current_user, instructor_id: int) -> bool:
 def list_instructors():
     with InstructorDAO() as dao:
         instructors = dao.get_all(request.args, g.current_user)
-        return respond(SUCCESS_MESSAGE, "OK", [to_dict(i) for i in instructors])
+        return respond(SUCCESS_MESSAGE, "OK", [_instructor_to_dict(i) for i in instructors])
 
 
 @instructors_api.route("/<int:instructor_id>", methods=["GET"])
@@ -69,7 +105,7 @@ def get_instructor(instructor_id):
         instructor = dao.get_by_id(instructor_id)
         if instructor is None:
             return respond(FAIL_MESSAGE, "Instructor not found"), 404
-        return respond(SUCCESS_MESSAGE, "OK", to_dict(instructor))
+        return respond(SUCCESS_MESSAGE, "OK", _instructor_to_dict(instructor))
 
 
 @instructors_api.route("", methods=["POST"])
@@ -86,7 +122,12 @@ def create_instructor():
         if existing_inst:
             return respond(FAIL_MESSAGE, f"An instructor with email {body.email} already exists"), 400
 
-        instructor = dao.create(body.model_dump())
+        data = body.model_dump()
+        owned_course_ids = data.pop("owned_course_ids", None)
+        instructor = dao.create(data)
+
+        if owned_course_ids is not None:
+            instructor.courses = dao.session.query(Course).filter(Course.id.in_(owned_course_ids)).all()
 
         # Automatically create or link a user account for the instructor with default password 'nFolks'
         user = dao.session.query(User).filter(User.email == instructor.email).one_or_none()
@@ -106,7 +147,7 @@ def create_instructor():
             dao.session.add(user)
         dao.session.flush()
 
-        return respond(SUCCESS_MESSAGE, "Instructor created", to_dict(instructor)), 201
+        return respond(SUCCESS_MESSAGE, "Instructor created", _instructor_to_dict(instructor)), 201
 
 
 @instructors_api.route("/<int:instructor_id>", methods=["PUT"])
@@ -123,11 +164,21 @@ def update_instructor(instructor_id):
     updates = body.model_dump(exclude_unset=True)
     if g.current_user["role"] == "instructor":
         updates.pop("feedback_score", None)  # admin-assessed field, never self-editable
+        updates.pop("owned_course_ids", None)
+
+    owned_course_ids = updates.pop("owned_course_ids", ...)
 
     with InstructorDAO() as dao:
         instructor = dao.get_by_id(instructor_id)
         if instructor is None:
             return respond(FAIL_MESSAGE, "Instructor not found"), 404
+
+        if owned_course_ids is not ...:
+            if owned_course_ids is not None:
+                instructor.courses = dao.session.query(Course).filter(Course.id.in_(owned_course_ids)).all()
+            else:
+                instructor.courses = []
+
         instructor = dao.update(instructor, updates)
 
         # Synchronize linked User account if name or email changed
@@ -137,7 +188,7 @@ def update_instructor(instructor_id):
                 user.full_name = updates["name"]
             dao.session.flush()
 
-        return respond(SUCCESS_MESSAGE, "Instructor updated", to_dict(instructor))
+        return respond(SUCCESS_MESSAGE, "Instructor updated", _instructor_to_dict(instructor))
 
 
 @instructors_api.route("/<int:instructor_id>", methods=["DELETE"])

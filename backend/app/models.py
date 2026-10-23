@@ -31,16 +31,9 @@ class UserRole(str, enum.Enum):
 class CourseStatus(str, enum.Enum):
     available = "available"
     in_development = "in_development"
-    backlog = "backlog"
-    pipeline = "pipeline"
-    draft = "draft"
-    in_progress = "in_progress"
-    for_review = "for_review"
-    updated_version = "updated_version"
-    custom = "custom"
-    published = "published"
-    lockheed = "lockheed"
     retired = "retired"
+    pipeline = "pipeline"
+    backlog = "backlog"
 
 
 class CourseOutlineStatus(str, enum.Enum):
@@ -82,6 +75,7 @@ class Instructor(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
     email = Column(String, unique=True, nullable=False, index=True)
+    phone = Column(String)
     location = Column(String)
     travel_preference = Column(Enum(TravelPreference, native_enum=False))
     languages = Column(String)
@@ -91,6 +85,7 @@ class Instructor(Base):
     product = Column(String)
     skills_products = Column(Text)
     courses_can_teach = Column(Text)
+    external_courses_owned = Column(Text)
     feedback_score = Column(Numeric)
     comments = Column(Text)
     created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)

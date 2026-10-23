@@ -19,32 +19,26 @@ import { useInstructors } from "@/hooks/use-instructors";
 import { BulkImportDialog } from "@/pages/courses/bulk-import-dialog";
 import { Button } from "@/components/ui/button";
 
+const HOME_COURSES_PARAMS = { limit: 300 };
+const HOME_INSTRUCTORS_PARAMS = { limit: 200 };
+
 export default function HomePage() {
   const user = useAuthStore((s) => s.user);
   const admin = isAdmin(user);
 
   const [importOpen, setImportOpen] = useState(false);
 
-  const coursesQuery = useCourses({ limit: 300 });
-  const instructorsQuery = useInstructors({ limit: 200 });
+  const coursesQuery = useCourses(HOME_COURSES_PARAMS);
+  const instructorsQuery = useInstructors(HOME_INSTRUCTORS_PARAMS);
 
   const courses = coursesQuery.data ?? [];
   const instructors = instructorsQuery.data ?? [];
 
   // Compute status distributions matching atlas lifecycle definitions
-  const availableCount = courses.filter((c) => c.status === "available" || c.status === "published").length;
-  const inDevelopmentCount = courses.filter(
-    (c) =>
-      c.status === "in_development" ||
-      c.status === "in_progress" ||
-      c.status === "for_review" ||
-      c.status === "updated_version" ||
-      c.status === "custom" ||
-      c.status === "lockheed"
-  ).length;
-  const pipelineCount = courses.filter(
-    (c) => c.status === "pipeline" || c.status === "backlog" || c.status === "draft"
-  ).length;
+  const availableCount = courses.filter((c) => c.status === "available").length;
+  const inDevelopmentCount = courses.filter((c) => c.status === "in_development").length;
+  const pipelineCount = courses.filter((c) => c.status === "pipeline").length;
+  const backlogCount = courses.filter((c) => c.status === "backlog").length;
   const retiredCount = courses.filter((c) => c.status === "retired").length;
 
   // Platform-Level Lifecycle Aggregation (Curriculum readiness by platform)
@@ -56,16 +50,9 @@ export default function HomePage() {
         map[plat] = { total: 0, published: 0, inProgress: 0, pipeline: 0 };
       }
       map[plat].total += 1;
-      if (c.status === "available" || c.status === "published") {
+      if (c.status === "available") {
         map[plat].published += 1;
-      } else if (
-        c.status === "in_development" ||
-        c.status === "in_progress" ||
-        c.status === "for_review" ||
-        c.status === "updated_version" ||
-        c.status === "custom" ||
-        c.status === "lockheed"
-      ) {
+      } else if (c.status === "in_development") {
         map[plat].inProgress += 1;
       } else {
         map[plat].pipeline += 1;
@@ -215,14 +202,14 @@ export default function HomePage() {
 
               <div>
                 <div className="flex justify-between text-xs font-medium">
-                  <span className="flex items-center gap-1.5 text-sky-700 dark:text-sky-400">
-                    <span className="size-2 rounded-full bg-sky-500" /> Pipeline & Backlog
+                  <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                    <span className="size-2 rounded-full bg-amber-500" /> Pipeline
                   </span>
                   <span className="font-mono text-fg-1 font-bold">{pipelineCount}</span>
                 </div>
                 <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-secondary">
                   <div
-                    className="h-full rounded-full bg-sky-500 transition-all duration-700"
+                    className="h-full rounded-full bg-amber-500 transition-all duration-700"
                     style={{ width: `${courses.length ? (pipelineCount / courses.length) * 100 : 0}%` }}
                   />
                 </div>
@@ -230,14 +217,29 @@ export default function HomePage() {
 
               <div>
                 <div className="flex justify-between text-xs font-medium">
-                  <span className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
-                    <span className="size-2 rounded-full bg-slate-400" /> Retired & Archived
+                  <span className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
+                    <span className="size-2 rounded-full bg-slate-400" /> Backlog
+                  </span>
+                  <span className="font-mono text-fg-1 font-bold">{backlogCount}</span>
+                </div>
+                <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-secondary">
+                  <div
+                    className="h-full rounded-full bg-slate-400 transition-all duration-700"
+                    style={{ width: `${courses.length ? (backlogCount / courses.length) * 100 : 0}%` }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex justify-between text-xs font-medium">
+                  <span className="flex items-center gap-1.5 text-rose-600 dark:text-rose-400">
+                    <span className="size-2 rounded-full bg-rose-500" /> Retired
                   </span>
                   <span className="font-mono text-fg-1 font-bold">{retiredCount}</span>
                 </div>
                 <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-secondary">
                   <div
-                    className="h-full rounded-full bg-slate-400 transition-all duration-700"
+                    className="h-full rounded-full bg-rose-500 transition-all duration-700"
                     style={{ width: `${courses.length ? (retiredCount / courses.length) * 100 : 0}%` }}
                   />
                 </div>

@@ -24,16 +24,9 @@ export function StatusBadge({ label, tone = "neutral" }: { label: string; tone?:
 const COURSE_STATUS_TONE: Record<string, Tone> = {
   available: "success",
   in_development: "info",
-  published: "success",
-  in_progress: "info",
-  for_review: "warning",
-  updated_version: "warning",
-  draft: "neutral",
+  retired: "neutral",
   pipeline: "gold",
   backlog: "neutral",
-  custom: "gold",
-  lockheed: "info",
-  retired: "neutral",
 };
 
 export function courseStatusTone(status: string): Tone {

@@ -40,16 +40,9 @@ import { InstructorSelect } from "@/components/shared/instructor-select";
 const STATUS_OPTIONS = [
   "available",
   "in_development",
-  "backlog",
-  "pipeline",
-  "draft",
-  "in_progress",
-  "for_review",
-  "updated_version",
-  "custom",
-  "published",
-  "lockheed",
   "retired",
+  "pipeline",
+  "backlog",
 ];
 
 const OUTLINE_STATUS_OPTIONS = [

@@ -2,8 +2,8 @@ from app.db import BaseDAO
 from app.models import Instructor
 from app.query_utils import apply_filters, parse_pagination, parse_sort
 
-FILTERABLE_COLUMNS = frozenset({"vendor", "platform", "portfolio", "product", "travel_preference", "location", "email"})
-SEARCH_COLUMNS = ["name", "platform", "product", "portfolio", "skills_products", "courses_can_teach", "comments"]
+FILTERABLE_COLUMNS = frozenset({"vendor", "platform", "portfolio", "product", "travel_preference", "location", "email", "phone"})
+SEARCH_COLUMNS = ["name", "email", "phone", "platform", "product", "portfolio", "skills_products", "courses_can_teach", "comments"]
 SORTABLE_COLUMNS = FILTERABLE_COLUMNS | {"id", "name", "created_at"}
 
 

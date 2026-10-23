@@ -19,20 +19,36 @@ export default function UsersPage() {
   const [editing, setEditing] = useState<AppUser | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [toDelete, setToDelete] = useState<AppUser | null>(null);
+  const [page, setPage] = useState(0);
+  const pageSize = 15;
+
+  const allUsers = data ?? [];
+  const pagedUsers = allUsers.slice(page * pageSize, (page + 1) * pageSize);
+  const hasNextPage = (page + 1) * pageSize < allUsers.length;
 
   const columns: DataTableColumn<AppUser>[] = [
-    { id: "full_name", label: "Name", render: (u) => u.full_name || "—" },
-    { id: "email", label: "Email", render: (u) => u.email },
+    {
+      id: "full_name",
+      label: "Name",
+      width: "240px",
+      render: (u) => <span className="font-semibold text-fg-1">{u.full_name || "—"}</span>,
+    },
+    {
+      id: "email",
+      label: "Email",
+      width: "280px",
+      render: (u) => <span className="text-muted-foreground">{u.email}</span>,
+    },
     {
       id: "role",
       label: "Role",
-      width: "120px",
+      width: "130px",
       render: (u) => <StatusBadge label={u.role === "admin" ? "Admin" : "Instructor"} tone={u.role === "admin" ? "gold" : "neutral"} />,
     },
     {
       id: "must_change_password",
       label: "Status",
-      width: "140px",
+      width: "160px",
       render: (u) => (u.must_change_password ? <StatusBadge label="Password pending" tone="warning" /> : <StatusBadge label="Active" tone="success" />),
     },
     {
@@ -86,7 +102,17 @@ export default function UsersPage() {
         }
       />
 
-      <DataTable columns={columns} rows={data ?? []} getRowId={(u) => u.id} isLoading={isLoading} emptyMessage="No users found." />
+      <DataTable
+        columns={columns}
+        rows={pagedUsers}
+        getRowId={(u) => u.id}
+        isLoading={isLoading}
+        page={page}
+        hasNextPage={hasNextPage}
+        onPageChange={setPage}
+        minWidth="900px"
+        emptyMessage="No users found."
+      />
 
       <UserFormDialog open={formOpen} onOpenChange={setFormOpen} user={editing} />
 
